@@ -1,0 +1,17 @@
+{
+  "name": "sparktest-cloud",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.13.1",
+  "scripts": {
+    "dev:frontend": "pnpm --filter saas-frontend dev",
+    "dev:backend": "cargo run --manifest-path apps/saas-backend/Cargo.toml",
+    "build:frontend": "pnpm --filter saas-frontend build",
+    "build:backend": "cargo build --manifest-path apps/saas-backend/Cargo.toml",
+    "lint:frontend": "pnpm --filter saas-frontend lint",
+    "test:backend": "cargo test --manifest-path apps/saas-backend/Cargo.toml"
+  },
+  "devDependencies": {
+    "@types/node": "^20"
+  }
+}
