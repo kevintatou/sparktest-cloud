@@ -6,5 +6,5 @@ edition = "2024"
 [dependencies]
 axum = "0.7"
 tokio = { version = "1.0", features = ["full"] }
-# Placeholder for sparktest-core (would be real dependency in production)
-# sparktest-core = "0.1.0"
+# Placeholder for tatou-core (would be real dependency in production)
+tatou-core = "0.2.0"

@@ -1,0 +1,7 @@
+{
+  "name": "@tatou/core",
+  "version": "0.2.0",
+  "description": "Placeholder core package for Tatou",
+  "main": "index.js",
+  "types": "index.d.ts"
+}
