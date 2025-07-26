@@ -7,4 +7,4 @@ edition = "2024"
 axum = "0.7"
 tokio = { version = "1.0", features = ["full"] }
 # Placeholder for tatou-core (would be real dependency in production)
-tatou-core = "0.2.0"
+# tatou-core = "0.2.0"

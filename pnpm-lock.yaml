@@ -14,12 +14,12 @@ importers:
 
   apps/saas-frontend:
     dependencies:
-      '@sparktest/core':
+      '@tatou/core':
         specifier: workspace:*
-        version: link:../../packages/sparktest-core
-      '@sparktest/ui':
+        version: link:../../packages/tatou-core
+      '@tatou/ui':
         specifier: workspace:*
-        version: link:../../packages/sparktest-ui
+        version: link:../../packages/tatou-ui
       next:
         specifier: 15.4.2
         version: 15.4.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -58,9 +58,9 @@ importers:
         specifier: ^5
         version: 5.8.3
 
-  packages/sparktest-core: {}
+  packages/tatou-core: {}
 
-  packages/sparktest-ui:
+  packages/tatou-ui:
     dependencies:
       react:
         specifier: '>=18.0.0'
