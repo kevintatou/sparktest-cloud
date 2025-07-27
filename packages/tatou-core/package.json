@@ -1,7 +1,11 @@
 {
   "name": "@tatou/core",
   "version": "0.2.0",
-  "description": "Placeholder core package for Tatou",
+  "description": "Core business logic and utilities for Tatou SaaS platform",
   "main": "index.js",
-  "types": "index.d.ts"
+  "types": "index.d.ts",
+  "dependencies": {
+    "zod": "^3.22.4",
+    "nanoid": "^5.0.4"
+  }
 }
