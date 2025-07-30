@@ -1,29 +1,43 @@
 [package]
 name = "saas-backend"
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 description = "SparkTest SaaS backend with Kubernetes test orchestration"
 
 [dependencies]
+# Local core crate
+sparktest-core = { path = "core" }
+
+# Web framework
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1.0", features = ["full"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+# Utilities
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
 anyhow = "1.0"
 thiserror = "1.0"
+
+# Random generation
 rand = "0.8"
 
 # Kubernetes integration
 kube = { version = "0.87", features = ["runtime", "derive"] }
 k8s-openapi = { version = "0.20", features = ["latest"] }
 
-# Database support
+# Database support (optional for production)
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "postgres", "uuid", "chrono", "macros"], optional = true }
 
 # Optional auth features

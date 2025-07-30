@@ -14,62 +14,8 @@ use tracing::{info, warn, error};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-// SparkTest Types (mirroring TypeScript types)
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Definition {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub image: String,
-    pub commands: Vec<String>,
-    pub created_at: DateTime<Utc>,
-    pub executor_id: Option<String>,
-    pub variables: Option<HashMap<String, String>>,
-    pub labels: Option<Vec<String>>,
-    pub source: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TestRun {
-    pub id: String,
-    pub name: String,
-    pub image: String,
-    pub command: Vec<String>,
-    pub status: String, // "running" | "completed" | "failed"
-    pub created_at: DateTime<Utc>,
-    pub definition_id: Option<String>,
-    pub executor_id: Option<String>,
-    pub suite_id: Option<String>,
-    pub variables: Option<HashMap<String, String>>,
-    pub artifacts: Option<Vec<String>>,
-    pub duration: Option<u64>,
-    pub retries: Option<u32>,
-    pub logs: Option<Vec<String>>,
-    pub k8s_job_name: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TestSuite {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub test_definition_ids: Vec<String>,
-    pub created_at: DateTime<Utc>,
-    pub execution_mode: String, // "sequential" | "parallel"
-    pub labels: Option<Vec<String>>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Executor {
-    pub id: String,
-    pub name: String,
-    pub image: String,
-    pub description: Option<String>,
-    pub command: Option<Vec<String>>,
-    pub supported_file_types: Option<Vec<String>>,
-    pub env: Option<HashMap<String, String>>,
-    pub created_at: DateTime<Utc>,
-}
+// Import from our OSS-compatible core crate
+use sparktest_core::*;
 
 // Request/Response types
 #[derive(Serialize, Deserialize)]
@@ -101,14 +47,15 @@ pub struct RunQuery {
     pub definition_id: Option<String>,
 }
 
-// In-memory storage (would be replaced with database in production)
+// Simple in-memory storage for demo purposes
+// In production, this would use a database or the frontend's storage API
 use std::sync::{Arc, Mutex};
 
 type Storage = Arc<Mutex<StorageData>>;
 
 #[derive(Default)]
 struct StorageData {
-    definitions: HashMap<String, Definition>,
+    definitions: HashMap<String, TestDefinition>,
     runs: HashMap<String, TestRun>,
     suites: HashMap<String, TestSuite>,
     executors: HashMap<String, Executor>,
@@ -131,38 +78,38 @@ async fn logging_middleware(
     response
 }
 
-// Initialize sample data
+// Initialize sample data from @tatou/core - this serves the OSS sample data
+// This eliminates duplication with the TypeScript samples
 fn init_sample_data(storage: Storage) {
     let mut data = storage.lock().unwrap();
     
-    // Sample definitions
+    // Create sample definitions that match the OSS @tatou/core sample data
+    // These are the "working examples" that can actually run
     let sample_defs = vec![
-        Definition {
-            id: "simple-health-check".to_string(),
+        TestDefinition {
+            id: Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
             name: "Simple Health Check".to_string(),
-            description: "Basic system health check using curl".to_string(),
+            description: "Basic system health check using curl to test network connectivity".to_string(),
             image: "curlimages/curl:latest".to_string(),
             commands: vec!["curl -f -s -o /dev/null -w \"%{http_code}\" https://httpbin.org/status/200 && echo \"Health check passed\"".to_string()],
             created_at: Utc::now(),
             executor_id: None,
             variables: None,
-            labels: Some(vec!["working".to_string(), "health".to_string()]),
-            source: None,
+            labels: Some(vec!["working".to_string(), "examples".to_string(), "demo".to_string(), "health".to_string()]),
         },
-        Definition {
-            id: "basic-python-test".to_string(),
+        TestDefinition {
+            id: Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
             name: "Basic Python Test".to_string(),
-            description: "Simple Python test without external dependencies".to_string(),
+            description: "Simple Python test that runs without external dependencies".to_string(),
             image: "python:3.9-slim".to_string(),
             commands: vec!["python -c \"import sys; print(f'Python version: {sys.version}'); assert 2 + 2 == 4; print('Basic math test passed')\"".to_string()],
             created_at: Utc::now(),
             executor_id: None,
             variables: None,
-            labels: Some(vec!["working".to_string(), "python".to_string()]),
-            source: None,
+            labels: Some(vec!["working".to_string(), "examples".to_string(), "demo".to_string(), "python".to_string()]),
         },
-        Definition {
-            id: "node-version-test".to_string(),
+        TestDefinition {
+            id: Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap(),
             name: "Node.js Version Test".to_string(),
             description: "Test Node.js installation and basic functionality".to_string(),
             image: "node:18-alpine".to_string(),
@@ -170,25 +117,27 @@ fn init_sample_data(storage: Storage) {
             created_at: Utc::now(),
             executor_id: None,
             variables: None,
-            labels: Some(vec!["working".to_string(), "nodejs".to_string()]),
-            source: None,
+            labels: Some(vec!["working".to_string(), "examples".to_string(), "demo".to_string(), "nodejs".to_string()]),
         }
     ];
 
     for def in sample_defs {
-        data.definitions.insert(def.id.clone(), def);
+        data.definitions.insert(def.id.to_string(), def);
     }
 
-    // Sample executors
+    // Sample executors matching OSS structure
     let sample_executors = vec![
         Executor {
-            id: "docker-executor".to_string(),
-            name: "Docker Container Runner".to_string(),
-            image: "docker:latest".to_string(),
-            description: Some("Run tests in isolated Docker containers".to_string()),
-            command: Some(vec!["docker".to_string(), "run".to_string(), "--rm".to_string()]),
-            supported_file_types: Some(vec!["dockerfile".to_string(), "yaml".to_string()]),
-            env: Some([("DOCKER_BUILDKIT".to_string(), "1".to_string())].into()),
+            id: "jest-executor".to_string(),
+            name: "Jest Test Runner".to_string(),
+            image: "node:18-alpine".to_string(),
+            description: Some("Run JavaScript/TypeScript unit tests using Jest testing framework.".to_string()),
+            command: Some(vec!["npm".to_string(), "run".to_string(), "test".to_string()]),
+            supported_file_types: Some(vec!["js".to_string(), "ts".to_string(), "json".to_string()]),
+            env: Some(serde_json::json!({
+                "NODE_ENV": "test",
+                "CI": "true"
+            })),
             created_at: Utc::now(),
         }
     ];
@@ -197,7 +146,7 @@ fn init_sample_data(storage: Storage) {
         data.executors.insert(executor.id.clone(), executor);
     }
 
-    info!("✅ Initialized sample data: {} definitions, {} executors", 
+    info!("✅ Initialized OSS-compatible sample data: {} definitions, {} executors", 
           data.definitions.len(), data.executors.len());
 }
 
@@ -241,9 +190,9 @@ async fn kubernetes_status() -> Json<KubernetesStatus> {
 // Get all definitions
 async fn get_definitions(
     axum::extract::State(storage): axum::extract::State<Storage>
-) -> Json<Vec<Definition>> {
+) -> Json<Vec<TestDefinition>> {
     let data = storage.lock().unwrap();
-    let definitions: Vec<Definition> = data.definitions.values().cloned().collect();
+    let definitions: Vec<TestDefinition> = data.definitions.values().cloned().collect();
     Json(definitions)
 }
 
@@ -251,7 +200,7 @@ async fn get_definitions(
 async fn get_definition(
     Path(id): Path<String>,
     axum::extract::State(storage): axum::extract::State<Storage>
-) -> Result<Json<Definition>, StatusCode> {
+) -> Result<Json<TestDefinition>, StatusCode> {
     let data = storage.lock().unwrap();
     match data.definitions.get(&id) {
         Some(definition) => Ok(Json(definition.clone())),
@@ -274,7 +223,9 @@ async fn get_runs(
     
     // Filter by definition_id if provided
     if let Some(def_id) = params.definition_id {
-        runs.retain(|run| run.definition_id.as_ref() == Some(&def_id));
+        if let Ok(uuid) = Uuid::parse_str(&def_id) {
+            runs.retain(|run| run.definition_id == Some(uuid));
+        }
     }
     
     // Sort by created_at descending
@@ -296,22 +247,22 @@ async fn create_run(
         None => return Err(StatusCode::NOT_FOUND),
     };
     
-    let run_id = Uuid::new_v4().to_string();
+    let run_id = Uuid::new_v4();
     let run_name = payload.name.unwrap_or_else(|| 
         format!("{} - {}", definition.name, Utc::now().format("%H:%M:%S"))
     );
     
     let new_run = TestRun {
-        id: run_id.clone(),
+        id: run_id,
         name: run_name,
         image: definition.image.clone(),
-        command: definition.commands.clone(),
+        commands: definition.commands.clone(),
         status: "running".to_string(),
         created_at: Utc::now(),
-        definition_id: Some(payload.definition_id),
+        definition_id: Some(definition.id),
         executor_id: definition.executor_id.clone(),
         suite_id: None,
-        variables: payload.variables.or(definition.variables.clone()),
+        variables: payload.variables.map(|v| serde_json::to_value(v).unwrap()).or(definition.variables.clone()),
         artifacts: Some(vec![]),
         duration: None,
         retries: Some(0),
@@ -319,23 +270,28 @@ async fn create_run(
             format!("> Starting test: {}", definition.name),
             "> Initializing container...".to_string(),
         ]),
-        k8s_job_name: Some(format!("sparktest-{}", &run_id[..8])),
+        k8s_job_name: Some(format!("sparktest-{}", &run_id.to_string()[..8])),
+        pod_scheduled: None,
+        container_created: None,
+        container_started: None,
+        completed: None,
+        failed: None,
     };
     
     info!("🚀 Created new test run: {} ({})", new_run.name, run_id);
     
     // Simulate test execution in background
     let storage_clone = storage.clone();
-    let run_id_clone = run_id.clone();
+    let run_id_clone = run_id;
     tokio::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
         
         let mut data = storage_clone.lock().unwrap();
-        if let Some(run) = data.runs.get_mut(&run_id_clone) {
+        if let Some(run) = data.runs.get_mut(&run_id_clone.to_string()) {
             // Simulate random success/failure
             let success = rand::random::<f32>() > 0.3;
             run.status = if success { "completed".to_string() } else { "failed".to_string() };
-            run.duration = Some(rand::random::<u64>() % 30000 + 5000); // 5-35 seconds
+            run.duration = Some(rand::random::<i32>() % 30 + 5); // 5-35 seconds
             
             if let Some(logs) = &mut run.logs {
                 logs.push("> Container started".to_string());
@@ -351,7 +307,7 @@ async fn create_run(
         }
     });
     
-    data.runs.insert(run_id, new_run.clone());
+    data.runs.insert(run_id.to_string(), new_run.clone());
     Ok(Json(new_run))
 }
 
@@ -398,7 +354,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("🚀 Starting SparkTest Backend v{}", env!("CARGO_PKG_VERSION"));
     info!("⚡ Kubernetes Test Orchestration Platform");
 
-    // Initialize storage with sample data
+    // Initialize storage with OSS-compatible sample data
     let storage: Storage = Arc::new(Mutex::new(StorageData::default()));
     init_sample_data(storage.clone());
 
@@ -408,7 +364,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers(Any);
 
-    // Build the router
+    // Build the router with OSS-compatible API structure
     let app = Router::new()
         // Health endpoints
         .route("/health", get(health))
