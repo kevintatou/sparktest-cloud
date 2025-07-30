@@ -12,6 +12,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@tatou/core": "workspace:*",
     "@tatou/ui": "workspace:*",
+    "@tatou/storage-service": "workspace:*",
     "@tanstack/react-query": "^5.0.0",
     "zustand": "^5.0.0",
     "react-hook-form": "^7.50.0",

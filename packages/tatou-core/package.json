@@ -1,11 +1,65 @@
 {
   "name": "@tatou/core",
   "version": "0.2.0",
-  "description": "Core business logic and utilities for Tatou SaaS platform",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "description": "Shared TypeScript types and utilities for SparkTest",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./storage": {
+      "types": "./dist/storage/index.d.ts",
+      "import": "./dist/storage/index.js",
+      "default": "./dist/storage/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js",
+      "default": "./dist/config.js"
+    },
+    "./samples": {
+      "types": "./dist/samples.d.ts",
+      "import": "./dist/samples.js",
+      "default": "./dist/samples.js"
+    },
+    "./utils": {
+      "types": "./dist/utils.d.ts",
+      "import": "./dist/utils.js",
+      "default": "./dist/utils.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js",
+      "default": "./dist/types.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc --build --force",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "zod": "^3.22.4",
-    "nanoid": "^5.0.4"
+    "lucide-react": "^0.454.0"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^22",
+    "@types/react": "^18"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
   }
 }

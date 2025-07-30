@@ -4,12 +4,17 @@
   "private": true,
   "packageManager": "pnpm@10.13.1",
   "scripts": {
-    "dev:frontend": "pnpm --filter saas-frontend dev",
+    "build:packages": "pnpm --filter \"./packages/*\" build",
+    "build:core": "pnpm --filter @tatou/core build", 
+    "build:storage": "pnpm --filter @tatou/storage-service build",
+    "build:ui": "pnpm --filter @tatou/ui build",
+    "dev:frontend": "pnpm build:packages && pnpm --filter saas-frontend dev",
     "dev:backend": "cargo run --manifest-path apps/saas-backend/Cargo.toml",
-    "build:frontend": "pnpm --filter saas-frontend build",
+    "build:frontend": "pnpm build:packages && pnpm --filter saas-frontend build",
     "build:backend": "cargo build --manifest-path apps/saas-backend/Cargo.toml",
     "lint:frontend": "pnpm --filter saas-frontend lint",
-    "test:backend": "cargo test --manifest-path apps/saas-backend/Cargo.toml"
+    "test:backend": "cargo test --manifest-path apps/saas-backend/Cargo.toml",
+    "type-check": "pnpm --filter \"./packages/*\" type-check"
   },
   "devDependencies": {
     "@types/node": "^20"

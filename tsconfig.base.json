@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "allowJs": true,
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "module": "esnext",
+    "target": "es2022",
+    "lib": ["es2022", "DOM"],
+    "moduleResolution": "bundler",
+    "declaration": true,
+    "declarationMap": true,
+    "composite": false,
+    "incremental": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@tatou/core": ["./packages/tatou-core/src"],
+      "@tatou/core/*": ["./packages/tatou-core/src/*"],
+      "@tatou/ui": ["./packages/tatou-ui/src"],
+      "@tatou/ui/*": ["./packages/tatou-ui/src/*"],
+      "@tatou/storage-service": ["./packages/tatou-storage-service/src"],
+      "@tatou/storage-service/*": ["./packages/tatou-storage-service/src/*"]
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
