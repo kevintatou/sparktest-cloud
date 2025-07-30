@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tower::ServiceBuilder;
 use tower_http::cors::{CorsLayer, Any};
-use tracing::{info, warn, error};
+use tracing::{info, warn};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
