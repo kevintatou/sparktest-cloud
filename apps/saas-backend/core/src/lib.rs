@@ -1,6 +1,7 @@
 pub mod models;
-
-#[cfg(feature = "database")]
 pub mod db;
 
 pub use models::*;
+
+#[cfg(feature = "database")]
+pub use db::{Database, create_connection_pool};

@@ -45,7 +45,8 @@ jsonwebtoken = { version = "8.3", optional = true }
 bcrypt = { version = "0.15", optional = true }
 
 [features]
-default = ["sqlite"]
+default = ["sqlite", "database"]
 sqlite = ["sqlx"]
 postgres = ["sqlx"]
 auth = ["jsonwebtoken", "bcrypt"]
+database = ["sparktest-core/database"]
