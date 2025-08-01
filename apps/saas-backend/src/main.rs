@@ -95,34 +95,31 @@ fn init_sample_data(storage: Arc<Mutex<StorageData>>) {
         TestDefinition {
             id: Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
             name: "Simple Health Check".to_string(),
-            description: "Basic system health check using curl to test network connectivity".to_string(),
+            description: Some("Basic system health check using curl to test network connectivity".to_string()),
             image: "curlimages/curl:latest".to_string(),
             commands: vec!["curl -f -s -o /dev/null -w \"%{http_code}\" https://httpbin.org/status/200 && echo \"Health check passed\"".to_string()],
             created_at: Utc::now(),
-            executor_id: Some("b7e6c1e2-1a2b-4c3d-8e9f-000000000008".to_string()),
-            variables: None,
+            executor_id: Some(Uuid::parse_str("b7e6c1e2-1a2b-4c3d-8e9f-000000000008").unwrap()),
             labels: Some(vec!["working".to_string(), "examples".to_string(), "demo".to_string(), "health".to_string()]),
         },
         TestDefinition {
             id: Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
             name: "Basic Python Test".to_string(),
-            description: "Simple Python test that runs without external dependencies".to_string(),
+            description: Some("Simple Python test that runs without external dependencies".to_string()),
             image: "python:3.9-slim".to_string(),
             commands: vec!["python -c \"import sys; print(f'Python version: {sys.version}'); assert 2 + 2 == 4; print('Basic math test passed')\"".to_string()],
             created_at: Utc::now(),
-            executor_id: Some("b7e6c1e2-1a2b-4c3d-8e9f-000000000003".to_string()),
-            variables: None,
+            executor_id: Some(Uuid::parse_str("b7e6c1e2-1a2b-4c3d-8e9f-000000000003").unwrap()),
             labels: Some(vec!["working".to_string(), "examples".to_string(), "demo".to_string(), "python".to_string()]),
         },
         TestDefinition {
             id: Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap(),
             name: "Node.js Version Test".to_string(),
-            description: "Test Node.js installation and basic functionality".to_string(),
+            description: Some("Test Node.js installation and basic functionality".to_string()),
             image: "node:18-alpine".to_string(),
             commands: vec!["node -e \"console.log('Node.js version:', process.version); console.log('Test passed: 2 + 2 =', 2 + 2); process.exit(0)\"".to_string()],
             created_at: Utc::now(),
-            executor_id: Some("b7e6c1e2-1a2b-4c3d-8e9f-000000000001".to_string()),
-            variables: None,
+            executor_id: Some(Uuid::parse_str("b7e6c1e2-1a2b-4c3d-8e9f-000000000001").unwrap()),
             labels: Some(vec!["working".to_string(), "examples".to_string(), "demo".to_string(), "nodejs".to_string()]),
         }
     ];
@@ -134,47 +131,39 @@ fn init_sample_data(storage: Arc<Mutex<StorageData>>) {
     // Sample executors matching OSS structure
     let sample_executors = vec![
         Executor {
-            id: "b7e6c1e2-1a2b-4c3d-8e9f-000000000001".to_string(),
+            id: Uuid::parse_str("b7e6c1e2-1a2b-4c3d-8e9f-000000000001").unwrap(),
             name: "Jest Test Runner".to_string(),
             image: "node:18-alpine".to_string(),
             description: Some("Run JavaScript/TypeScript unit tests using Jest testing framework.".to_string()),
-            command: Some(vec!["npm".to_string(), "run".to_string(), "test".to_string()]),
-            supported_file_types: Some(vec!["js".to_string(), "ts".to_string(), "json".to_string()]),
-            env: Some(serde_json::json!({
-                "NODE_ENV": "test",
-                "CI": "true"
-            })),
-            created_at: Utc::now(),
+            default_command: "npm run test".to_string(),
+            supported_file_types: vec!["js".to_string(), "ts".to_string(), "json".to_string()],
+            environment_variables: vec!["NODE_ENV".to_string(), "CI".to_string()],
+            icon: Some("🧪".to_string()),
         },
         Executor {
-            id: "b7e6c1e2-1a2b-4c3d-8e9f-000000000003".to_string(),
+            id: Uuid::parse_str("b7e6c1e2-1a2b-4c3d-8e9f-000000000003").unwrap(),
             name: "Pytest Runner".to_string(),
             image: "python:3.11-slim".to_string(),
             description: Some("Run Python unit and integration tests using pytest framework.".to_string()),
-            command: Some(vec!["pytest".to_string(), "--verbose".to_string()]),
-            supported_file_types: Some(vec!["py".to_string(), "yaml".to_string(), "json".to_string()]),
-            env: Some(serde_json::json!({
-                "PYTHONPATH": "/app",
-                "PYTEST_CURRENT_TEST": "true"
-            })),
-            created_at: Utc::now(),
+            default_command: "pytest --verbose --junit-xml=test-results.xml".to_string(),
+            supported_file_types: vec!["py".to_string(), "yaml".to_string(), "json".to_string()],
+            environment_variables: vec!["PYTHONPATH".to_string(), "PYTEST_CURRENT_TEST".to_string()],
+            icon: Some("🐍".to_string()),
         },
         Executor {
-            id: "b7e6c1e2-1a2b-4c3d-8e9f-000000000008".to_string(),
+            id: Uuid::parse_str("b7e6c1e2-1a2b-4c3d-8e9f-000000000008").unwrap(),
             name: "Docker Container Runner".to_string(),
             image: "docker:latest".to_string(),
             description: Some("Run tests in isolated Docker containers with custom configurations.".to_string()),
-            command: Some(vec!["docker".to_string(), "run".to_string(), "--rm".to_string()]),
-            supported_file_types: Some(vec!["dockerfile".to_string(), "yaml".to_string(), "sh".to_string()]),
-            env: Some(serde_json::json!({
-                "DOCKER_BUILDKIT": "1"
-            })),
-            created_at: Utc::now(),
+            default_command: "docker run --rm".to_string(),
+            supported_file_types: vec!["dockerfile".to_string(), "yaml".to_string(), "sh".to_string()],
+            environment_variables: vec!["DOCKER_BUILDKIT".to_string()],
+            icon: Some("🐳".to_string()),
         }
     ];
 
     for executor in sample_executors {
-        data.executors.insert(executor.id.clone(), executor);
+        data.executors.insert(executor.id.to_string(), executor);
     }
 
     info!("✅ Initialized OSS-compatible sample data: {} definitions, {} executors", 
@@ -300,7 +289,7 @@ async fn get_runs(
                     }
                     if let Some(def_id) = params.definition_id {
                         if let Ok(uuid) = Uuid::parse_str(&def_id) {
-                            runs.retain(|run| run.definition_id == Some(uuid));
+                            runs.retain(|run| run.test_definition_id == Some(uuid));
                         }
                     }
                     Ok(Json(runs))
@@ -323,7 +312,7 @@ async fn get_runs(
             // Filter by definition_id if provided
             if let Some(def_id) = params.definition_id {
                 if let Ok(uuid) = Uuid::parse_str(&def_id) {
-                    runs.retain(|run| run.definition_id == Some(uuid));
+                    runs.retain(|run| run.test_definition_id == Some(uuid));
                 }
             }
             
@@ -368,26 +357,16 @@ async fn create_run(
                 id: run_id,
                 name: run_name,
                 image: definition.image.clone(),
-                commands: definition.commands.clone(),
+                command: definition.commands.clone(),  // Note: 'command' not 'commands'
                 status: "running".to_string(),
                 created_at: Utc::now(),
-                definition_id: Some(definition.id),
-                executor_id: definition.executor_id.clone(),
-                suite_id: None,
-                variables: payload.variables.map(|v| serde_json::to_value(v).unwrap()).or(definition.variables.clone()),
-                artifacts: Some(vec![]),
+                test_definition_id: Some(definition.id),  // Match OSS field name
+                executor_id: definition.executor_id,  // This is already Option<Uuid>
                 duration: None,
-                retries: Some(0),
                 logs: Some(vec![
                     format!("> Starting test: {}", definition.name),
                     "> Initializing container...".to_string(),
                 ]),
-                k8s_job_name: Some(format!("sparktest-{}", &run_id.to_string()[..8])),
-                pod_scheduled: None,
-                container_created: None,
-                container_started: None,
-                completed: None,
-                failed: None,
             };
             
             // Create in database
@@ -432,26 +411,16 @@ async fn create_run(
                 id: run_id,
                 name: run_name,
                 image: definition.image.clone(),
-                commands: definition.commands.clone(),
+                command: definition.commands.clone(),  // Note: 'command' not 'commands'
                 status: "running".to_string(),
                 created_at: Utc::now(),
-                definition_id: Some(definition.id),
-                executor_id: definition.executor_id.clone(),
-                suite_id: None,
-                variables: payload.variables.map(|v| serde_json::to_value(v).unwrap()).or(definition.variables.clone()),
-                artifacts: Some(vec![]),
+                test_definition_id: Some(definition.id),  // Match OSS field name
+                executor_id: definition.executor_id,  // This is already Option<Uuid>
                 duration: None,
-                retries: Some(0),
                 logs: Some(vec![
                     format!("> Starting test: {}", definition.name),
                     "> Initializing container...".to_string(),
                 ]),
-                k8s_job_name: Some(format!("sparktest-{}", &run_id.to_string()[..8])),
-                pod_scheduled: None,
-                container_created: None,
-                container_started: None,
-                completed: None,
-                failed: None,
             };
             
             info!("🚀 Created new test run: {} ({})", new_run.name, run_id);

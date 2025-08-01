@@ -7,57 +7,46 @@ pub struct TestRun {
     pub id: Uuid,
     pub name: String,
     pub image: String,
-    pub commands: Vec<String>,
+    pub command: Vec<String>,  // Note: singular 'command' to match OSS SQL schema
     pub status: String,
     pub created_at: DateTime<Utc>,
-    pub definition_id: Option<Uuid>,
-    pub executor_id: Option<String>,
-    pub suite_id: Option<Uuid>,
-    pub variables: Option<serde_json::Value>,
-    pub artifacts: Option<Vec<String>>,
     pub duration: Option<i32>,
-    pub retries: Option<i32>,
     pub logs: Option<Vec<String>>,
-    pub k8s_job_name: Option<String>,
-    pub pod_scheduled: Option<DateTime<Utc>>,
-    pub container_created: Option<DateTime<Utc>>,
-    pub container_started: Option<DateTime<Utc>>,
-    pub completed: Option<DateTime<Utc>>,
-    pub failed: Option<DateTime<Utc>>,
+    pub test_definition_id: Option<Uuid>,  // FK to test_definitions
+    pub executor_id: Option<Uuid>,  // FK to test_executors, using UUID not String
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestDefinition {
     pub id: Uuid,
     pub name: String,
-    pub description: String,
+    pub description: Option<String>,  // Optional to match OSS schema
     pub image: String,
     pub commands: Vec<String>,
     pub created_at: DateTime<Utc>,
-    pub executor_id: Option<String>,
-    pub variables: Option<serde_json::Value>,
+    pub executor_id: Option<Uuid>,  // FK to test_executors, using UUID not String
     pub labels: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Executor {
-    pub id: String,
+    pub id: Uuid,  // Using UUID for consistency with OSS schema
     pub name: String,
-    pub image: String,
     pub description: Option<String>,
-    pub command: Option<Vec<String>>,
-    pub supported_file_types: Option<Vec<String>>,
-    pub env: Option<serde_json::Value>,
-    pub created_at: DateTime<Utc>,
+    pub image: String,
+    pub default_command: String,  // Match OSS 'default_command' field name
+    pub supported_file_types: Vec<String>,
+    pub environment_variables: Vec<String>,  // Match OSS field name
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestSuite {
     pub id: Uuid,
     pub name: String,
-    pub description: String,
-    pub test_definition_ids: Vec<Uuid>,
-    pub created_at: DateTime<Utc>,
+    pub description: Option<String>,  // Optional to match OSS schema
     pub execution_mode: String,
     pub labels: Option<Vec<String>>,
+    pub test_definition_ids: Vec<Uuid>,
+    pub created_at: DateTime<Utc>,
 }
