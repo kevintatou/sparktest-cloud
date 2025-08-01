@@ -1,15 +1,16 @@
 use crate::models::*;
 use anyhow::Result;
-use sqlx::PgPool;
 use uuid::Uuid;
 
 #[cfg(feature = "database")]
-pub use sqlx::{Pool, Postgres};
+use sqlx::{PgPool, Pool, Postgres};
 
+#[cfg(feature = "database")]
 pub struct Database {
     pub pool: PgPool,
 }
 
+#[cfg(feature = "database")]
 impl Database {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -53,7 +54,7 @@ impl Database {
         Ok(None)
     }
 
-    pub async fn get_executors(&self) -> Result<Vec<Executor>> {
+    pub async fn get_executors(&self) -> Result<Vec<TestExecutor>> {
         // For now, return sample data - in production this would query the database
         Ok(vec![])
     }

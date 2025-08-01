@@ -64,7 +64,7 @@ struct StorageData {
     definitions: HashMap<String, TestDefinition>,
     runs: HashMap<String, TestRun>,
     suites: HashMap<String, TestSuite>,
-    executors: HashMap<String, Executor>,
+    executors: HashMap<String, TestExecutor>,
 }
 
 // Middleware for logging
@@ -130,7 +130,7 @@ fn init_sample_data(storage: Arc<Mutex<StorageData>>) {
 
     // Sample executors matching OSS structure
     let sample_executors = vec![
-        Executor {
+        TestExecutor {
             id: Uuid::parse_str("b7e6c1e2-1a2b-4c3d-8e9f-000000000001").unwrap(),
             name: "Jest Test Runner".to_string(),
             image: "node:18-alpine".to_string(),
@@ -140,7 +140,7 @@ fn init_sample_data(storage: Arc<Mutex<StorageData>>) {
             environment_variables: vec!["NODE_ENV".to_string(), "CI".to_string()],
             icon: Some("🧪".to_string()),
         },
-        Executor {
+        TestExecutor {
             id: Uuid::parse_str("b7e6c1e2-1a2b-4c3d-8e9f-000000000003").unwrap(),
             name: "Pytest Runner".to_string(),
             image: "python:3.11-slim".to_string(),
@@ -150,7 +150,7 @@ fn init_sample_data(storage: Arc<Mutex<StorageData>>) {
             environment_variables: vec!["PYTHONPATH".to_string(), "PYTEST_CURRENT_TEST".to_string()],
             icon: Some("🐍".to_string()),
         },
-        Executor {
+        TestExecutor {
             id: Uuid::parse_str("b7e6c1e2-1a2b-4c3d-8e9f-000000000008").unwrap(),
             name: "Docker Container Runner".to_string(),
             image: "docker:latest".to_string(),
@@ -519,7 +519,7 @@ async fn get_suites(State(storage): State<AppStorage>) -> Result<Json<Vec<TestSu
 }
 
 // Get all executors
-async fn get_executors(State(storage): State<AppStorage>) -> Result<Json<Vec<Executor>>, StatusCode> {
+async fn get_executors(State(storage): State<AppStorage>) -> Result<Json<Vec<TestExecutor>>, StatusCode> {
     match &storage {
         #[cfg(feature = "database")]
         AppStorage::Database(db) => {
@@ -533,7 +533,7 @@ async fn get_executors(State(storage): State<AppStorage>) -> Result<Json<Vec<Exe
         },
         AppStorage::InMemory(data) => {
             let data = data.lock().unwrap();
-            let executors: Vec<Executor> = data.executors.values().cloned().collect();
+            let executors: Vec<TestExecutor> = data.executors.values().cloned().collect();
             Ok(Json(executors))
         }
     }

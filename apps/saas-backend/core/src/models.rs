@@ -29,7 +29,7 @@ pub struct TestDefinition {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Executor {
+pub struct TestExecutor {
     pub id: Uuid,  // Using UUID for consistency with OSS schema
     pub name: String,
     pub description: Option<String>,
