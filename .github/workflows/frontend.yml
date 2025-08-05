@@ -19,7 +19,7 @@ on:
 jobs:
   frontend-tests:
     name: Frontend Tests & Build
-    runs-on: spark-test
+    runs-on: spark-runner
 
     steps:
       - name: Checkout code

@@ -23,7 +23,7 @@ on:
 jobs:
   frontend:
     name: Frontend - Build & Lint
-    runs-on: spark-test
+    runs-on: spark-runner
 
     steps:
       - name: Checkout code
@@ -59,7 +59,7 @@ jobs:
 
   backend:
     name: Backend - Build & Test
-    runs-on: spark-test
+    runs-on: spark-runner
 
     steps:
       - name: Checkout code
@@ -84,7 +84,7 @@ jobs:
 
   integration:
     name: Integration Tests
-    runs-on: spark-test
+    runs-on: spark-runner
     needs: [frontend, backend]
 
     steps:
