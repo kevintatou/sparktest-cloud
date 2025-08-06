@@ -5,7 +5,17 @@ import { TestDefinition, TestRun, Executor, TestSuite } from '@sparktest/core';
 export { Button } from './components/ui/button';
 export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from './components/ui/card';
 export { ThemeToggle } from './components/ui/theme-toggle';
-export { Toast, ToastProvider, ToastViewport, ToastTitle, ToastDescription, ToastClose, ToastAction } from './components/ui/toast';
+export { 
+  Toast, 
+  ToastProvider, 
+  ToastViewport, 
+  ToastTitle, 
+  ToastDescription, 
+  ToastClose, 
+  ToastAction,
+  type ToastProps,
+  type ToastActionElement
+} from './components/ui/toast';
 export { Sidebar, SidebarContent, SidebarHeader, SidebarNav, SidebarNavItem } from './components/ui/sidebar';
 
 // Legacy components for backward compatibility (will be redesigned)
