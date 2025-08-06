@@ -1,0 +1,20 @@
+[package]
+name = "sparktest-saas-bin"
+version = "0.1.0"
+edition = "2021"
+description = "Binary for SparkTest SaaS API server"
+license = "MIT"
+
+[[bin]]
+name = "sparktest-saas-server"
+path = "src/main.rs"
+
+[dependencies]
+sparktest-core = "0.1.0"
+sparktest-saas-core = { path = "../core" }
+sparktest-saas-api = { path = "../api" }
+axum = "0.7"
+tokio = { version = "1.36", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1.0"

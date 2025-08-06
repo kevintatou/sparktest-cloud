@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/saas/backend/core",
+    "apps/saas/backend/api", 
+    "apps/saas/backend/bin"
+]
