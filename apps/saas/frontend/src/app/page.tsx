@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { TestDefinition, TestRun, Executor, TestSuite, defaultConfig } from '@sparktest/core';
 import { ModernTestDefinitionCard, ModernTestRunCard, ModernExecutorCard, ModernTestSuiteCard } from '@/components/modern-cards';
+import { CreateTestDialog } from '@/components/create-test-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -16,6 +17,7 @@ export default function Home() {
   const [testRuns, setTestRuns] = useState<TestRun[]>([]);
   const [executors, setExecutors] = useState<Executor[]>([]);
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const { toast } = useToast();
 
   // Load sample data
@@ -130,13 +132,10 @@ export default function Home() {
     ]);
   }, []);
 
-  const handleCreateTest = () => {
+  const handleCreateTest = (testData: Omit<TestDefinition, 'id' | 'created_at' | 'updated_at'>) => {
     const newTest: TestDefinition = {
+      ...testData,
       id: `test-${Date.now()}`,
-      name: `New Test ${testDefinitions.length + 1}`,
-      description: 'New test description - click edit to customize',
-      code: '// Write your test code here',
-      language: 'javascript',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -214,7 +213,7 @@ export default function Home() {
           </p>
         </div>
         
-        <Button size="lg" onClick={handleCreateTest} className="gap-2">
+        <Button size="lg" onClick={() => setShowCreateDialog(true)} className="gap-2">
           <Plus className="h-4 w-4" />
           Create New Test
         </Button>
@@ -307,7 +306,7 @@ export default function Home() {
                   Create and manage your test definitions.
                 </p>
               </div>
-              <Button onClick={handleCreateTest} className="gap-2">
+              <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
                 <Plus className="h-4 w-4" />
                 Create Test
               </Button>
@@ -435,6 +434,13 @@ export default function Home() {
       <main className="container py-6">
         {renderTabContent()}
       </main>
+
+      {/* Create Test Dialog */}
+      <CreateTestDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        onCreateTest={handleCreateTest}
+      />
     </div>
   );
 }
