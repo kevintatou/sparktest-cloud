@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TestDefinition, TestRun, Executor, TestSuite, defaultConfig } from '../../../../../packages/core/dist/index.js';
-import { TestDefinitionCard, TestRunCard, ExecutorCard, TestSuiteCard } from '../../../../../packages/ui/dist/index.js';
+import { Definition, Run, Executor, Suite } from '@tatou/core';
+import { TestDefinitionCard, TestRunCard, ExecutorCard, TestSuiteCard } from '../../../../../packages/ui/src/index';
 import { CreateTestDialog } from '@/components/create-test-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,10 +13,10 @@ import { cn } from '@/lib/utils';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'definitions' | 'runs' | 'executors' | 'suites'>('dashboard');
-  const [testDefinitions, setTestDefinitions] = useState<TestDefinition[]>([]);
-  const [testRuns, setTestRuns] = useState<TestRun[]>([]);
+  const [testDefinitions, setTestDefinitions] = useState<Definition[]>([]);
+  const [testRuns, setTestRuns] = useState<Run[]>([]);
   const [executors, setExecutors] = useState<Executor[]>([]);
-  const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
+  const [testSuites, setTestSuites] = useState<Suite[]>([]);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const { toast } = useToast();
 
@@ -28,28 +28,25 @@ export default function Home() {
         id: '1',
         name: 'Basic API Test',
         description: 'Tests the basic API endpoints for user authentication and data retrieval',
-        code: 'console.log("Hello, world!");',
-        language: 'javascript',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        image: 'javascript',
+        commands: ['console.log("Hello, world!");'],
+        createdAt: new Date().toISOString(),
       },
       {
         id: '2',
         name: 'Database Connection Test',
         description: 'Tests database connectivity and basic CRUD operations',
-        code: 'import sqlite3\nprint("Database test")',
-        language: 'python',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        image: 'python',
+        commands: ['import sqlite3', 'print("Database test")'],
+        createdAt: new Date().toISOString(),
       },
       {
         id: '3',
         name: 'Performance Benchmark',
         description: 'Load testing for API endpoints under high traffic conditions',
-        code: 'fn main() { println!("Rust test"); }',
-        language: 'rust',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        image: 'rust',
+        commands: ['fn main() { println!("Rust test"); }'],
+        createdAt: new Date().toISOString(),
       },
     ]);
 
@@ -57,26 +54,32 @@ export default function Home() {
     setTestRuns([
       {
         id: 'run-1',
-        definition_id: '1',
+        name: 'Basic API Test Run',
+        image: 'javascript',
+        command: ['console.log("Hello, world!");'],
         status: 'completed',
-        result: { success: true, output: 'Hello, world!', duration: 1250 },
-        created_at: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-        updated_at: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+        createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+        definitionId: '1',
+        duration: 1250,
       },
       {
         id: 'run-2',
-        definition_id: '2',
+        name: 'Database Connection Test Run',
+        image: 'python',
+        command: ['import sqlite3', 'print("Database test")'],
         status: 'failed',
-        error: 'Database connection failed: Connection timeout',
-        created_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-        updated_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+        createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+        definitionId: '2',
+        logs: ['Database connection failed: Connection timeout'],
       },
       {
         id: 'run-3',
-        definition_id: '3',
+        name: 'Performance Benchmark Run',
+        image: 'rust',
+        command: ['fn main() { println!("Rust test"); }'],
         status: 'running',
-        created_at: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-        updated_at: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
+        createdAt: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
+        definitionId: '3',
       },
     ]);
 
@@ -85,29 +88,23 @@ export default function Home() {
       {
         id: 'exec-1',
         name: 'Local Development',
-        type: 'local',
-        config: { max_workers: 4 },
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        image: 'local-runner',
+        description: 'Local development environment executor',
+        createdAt: new Date().toISOString(),
       },
       {
         id: 'exec-2',
         name: 'Kubernetes Cluster',
-        type: 'kubernetes',
-        config: { namespace: 'sparktest', replicas: 3 },
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        image: 'k8s-runner',
+        description: 'Kubernetes cluster executor for production workloads',
+        createdAt: new Date().toISOString(),
       },
       {
         id: 'exec-3',
         name: 'Docker Swarm',
-        type: 'docker',
-        config: { network: 'sparktest-net' },
-        status: 'inactive',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        image: 'docker-runner',
+        description: 'Docker Swarm executor for distributed testing',
+        createdAt: new Date().toISOString(),
       },
     ]);
 
@@ -117,27 +114,26 @@ export default function Home() {
         id: 'suite-1',
         name: 'API Test Suite',
         description: 'Complete API testing suite including auth, CRUD, and performance tests',
-        test_definitions: ['1', '2'],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        testDefinitionIds: ['1', '2'],
+        createdAt: new Date().toISOString(),
+        executionMode: 'sequential',
       },
       {
         id: 'suite-2',
         name: 'End-to-End Tests',
         description: 'Full application workflow testing',
-        test_definitions: ['1', '2', '3'],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        testDefinitionIds: ['1', '2', '3'],
+        createdAt: new Date().toISOString(),
+        executionMode: 'parallel',
       },
     ]);
   }, []);
 
-  const handleCreateTest = (testData: Omit<TestDefinition, 'id' | 'created_at' | 'updated_at'>) => {
-    const newTest: TestDefinition = {
+  const handleCreateTest = (testData: Omit<Definition, 'id' | 'createdAt'>) => {
+    const newTest: Definition = {
       ...testData,
       id: `test-${Date.now()}`,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
     };
     setTestDefinitions([...testDefinitions, newTest]);
     toast({
@@ -148,12 +144,14 @@ export default function Home() {
 
   const handleRunTest = (definitionId: string) => {
     const definition = testDefinitions.find(d => d.id === definitionId);
-    const newRun: TestRun = {
+    const newRun: Run = {
       id: `run-${Date.now()}`,
-      definition_id: definitionId,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      name: `${definition?.name} Run`,
+      image: definition?.image || 'default',
+      command: definition?.commands || ['echo "test"'],
+      status: 'running',
+      createdAt: new Date().toISOString(),
+      definitionId: definitionId,
     };
     setTestRuns([newRun, ...testRuns]);
 
@@ -166,15 +164,7 @@ export default function Home() {
     setTimeout(() => {
       setTestRuns(prev => prev.map(run => 
         run.id === newRun.id 
-          ? { ...run, status: 'running' as const }
-          : run
-      ));
-    }, 1000);
-
-    setTimeout(() => {
-      setTestRuns(prev => prev.map(run => 
-        run.id === newRun.id 
-          ? { ...run, status: 'completed' as const, result: { success: true, duration: Math.floor(Math.random() * 3000) + 500 } }
+          ? { ...run, status: 'completed' as const, duration: Math.floor(Math.random() * 3000) + 500 }
           : run
       ));
       toast({
@@ -203,113 +193,95 @@ export default function Home() {
   ];
 
   const renderDashboard = () => (
-    <div className="space-y-12">
-      {/* Premium Hero Section */}
-      <div className="space-y-6">
-        <div className="text-center lg:text-left">
-          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+    <div className="space-y-8">
+      {/* Clean Hero Section */}
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
             Welcome back
           </h1>
-          <p className="text-lg text-muted-foreground mt-2">
+          <p className="text-muted-foreground">
             Here's what's happening with your tests today.
           </p>
         </div>
         
-        <div className="flex flex-col sm:flex-row gap-4 items-center lg:items-start">
+        <div className="flex flex-col sm:flex-row gap-4 items-start">
           <Button 
             size="lg" 
             onClick={() => setShowCreateDialog(true)} 
-            className="btn-gradient-primary gap-3 px-8 py-4 text-base h-auto"
+            className="gap-2"
           >
-            <Plus className="h-5 w-5" />
+            <Plus className="h-4 w-4" />
             Create New Test
           </Button>
           <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-            <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
+            <div className="h-2 w-2 bg-green-500 rounded-full"></div>
             <span>All systems operational</span>
           </div>
         </div>
       </div>
 
-      {/* Premium Stats Cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="premium-card group">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Tests</CardTitle>
-            <div className="p-2 bg-gradient-to-br from-blue-500/10 to-blue-600/10 rounded-lg group-hover:from-blue-500/20 group-hover:to-blue-600/20 transition-all duration-300">
-              <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
+      {/* Clean Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Tests</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
-              {testDefinitions.length}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <div className="text-2xl font-bold">{testDefinitions.length}</div>
+            <p className="text-xs text-muted-foreground">
               <span className="text-green-600">+2</span> this week
             </p>
           </CardContent>
         </Card>
         
-        <Card className="premium-card group">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Recent Runs</CardTitle>
-            <div className="p-2 bg-gradient-to-br from-green-500/10 to-green-600/10 rounded-lg group-hover:from-green-500/20 group-hover:to-green-600/20 transition-all duration-300">
-              <Play className="h-5 w-5 text-green-600 dark:text-green-400" />
-            </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Recent Runs</CardTitle>
+            <Play className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent">
-              {testRuns.length}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <div className="text-2xl font-bold">{testRuns.length}</div>
+            <p className="text-xs text-muted-foreground">
               <span className="text-green-600">+5</span> today
             </p>
           </CardContent>
         </Card>
         
-        <Card className="premium-card group">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Active Executors</CardTitle>
-            <div className="p-2 bg-gradient-to-br from-purple-500/10 to-purple-600/10 rounded-lg group-hover:from-purple-500/20 group-hover:to-purple-600/20 transition-all duration-300">
-              <Server className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-            </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Executors</CardTitle>
+            <Server className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-purple-700 bg-clip-text text-transparent">
-              {executors.filter(e => e.status === 'active').length}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <div className="text-2xl font-bold">{executors.length}</div>
+            <p className="text-xs text-muted-foreground">
               <span className="text-green-600">100%</span> uptime
             </p>
           </CardContent>
         </Card>
         
-        <Card className="premium-card group">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Test Suites</CardTitle>
-            <div className="p-2 bg-gradient-to-br from-orange-500/10 to-orange-600/10 rounded-lg group-hover:from-orange-500/20 group-hover:to-orange-600/20 transition-all duration-300">
-              <Layers className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-            </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Test Suites</CardTitle>
+            <Layers className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-orange-700 bg-clip-text text-transparent">
-              {testSuites.length}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <div className="text-2xl font-bold">{testSuites.length}</div>
+            <p className="text-xs text-muted-foreground">
               <span className="text-green-600">Active</span> monitoring
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Premium Activity Sections */}
-      <div className="grid gap-8 lg:grid-cols-2">
-        <Card className="premium-card">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-xl font-semibold flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-green-500/10 to-green-600/10 rounded-lg">
-                <Play className="h-5 w-5 text-green-600 dark:text-green-400" />
-              </div>
+      {/* Clean Activity Sections */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Play className="h-5 w-5" />
               Recent Test Runs
             </CardTitle>
           </CardHeader>
@@ -327,12 +299,10 @@ export default function Home() {
           </CardContent>
         </Card>
         
-        <Card className="premium-card">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-xl font-semibold flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-blue-500/10 to-blue-600/10 rounded-lg">
-                <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
               Quick Actions
             </CardTitle>
           </CardHeader>
@@ -372,20 +342,20 @@ export default function Home() {
         
       case 'definitions':
         return (
-          <div className="space-y-8">
+          <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">Test Definitions</h2>
-                <p className="text-muted-foreground mt-1">
+                <h2 className="text-2xl font-bold tracking-tight">Test Definitions</h2>
+                <p className="text-muted-foreground">
                   Create and manage your test definitions.
                 </p>
               </div>
-              <Button onClick={() => setShowCreateDialog(true)} className="btn-gradient-primary gap-2 px-6">
+              <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
                 <Plus className="h-4 w-4" />
                 Create Test
               </Button>
             </div>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {testDefinitions.map(definition => (
                 <TestDefinitionCard
                   key={definition.id}
@@ -396,12 +366,12 @@ export default function Home() {
               ))}
               {testDefinitions.length === 0 && (
                 <div className="col-span-full">
-                  <Card className="premium-card">
-                    <CardContent className="text-center py-16">
-                      <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-                      <h3 className="text-xl font-semibold mb-2">No test definitions yet</h3>
-                      <p className="text-muted-foreground mb-6">Get started by creating your first test definition</p>
-                      <Button onClick={() => setShowCreateDialog(true)} className="btn-gradient-primary gap-2">
+                  <Card>
+                    <CardContent className="text-center py-12">
+                      <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                      <h3 className="text-lg font-semibold mb-2">No test definitions yet</h3>
+                      <p className="text-muted-foreground mb-4">Get started by creating your first test definition</p>
+                      <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
                         <Plus className="h-4 w-4" />
                         Create Your First Test
                       </Button>
@@ -415,24 +385,24 @@ export default function Home() {
 
       case 'runs':
         return (
-          <div className="space-y-8">
+          <div className="space-y-6">
             <div>
-              <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">Test Runs</h2>
-              <p className="text-muted-foreground mt-1">
+              <h2 className="text-2xl font-bold tracking-tight">Test Runs</h2>
+              <p className="text-muted-foreground">
                 Monitor your test execution history and results.
               </p>
             </div>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {testRuns.map(run => (
                 <TestRunCard key={run.id} run={run} />
               ))}
               {testRuns.length === 0 && (
                 <div className="col-span-full">
-                  <Card className="premium-card">
-                    <CardContent className="text-center py-16">
-                      <Play className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-                      <h3 className="text-xl font-semibold mb-2">No test runs yet</h3>
-                      <p className="text-muted-foreground mb-6">Run a test to see execution history here</p>
+                  <Card>
+                    <CardContent className="text-center py-12">
+                      <Play className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                      <h3 className="text-lg font-semibold mb-2">No test runs yet</h3>
+                      <p className="text-muted-foreground mb-4">Run a test to see execution history here</p>
                       <Button onClick={() => setActiveTab('definitions')} variant="outline">
                         View Test Definitions
                       </Button>
@@ -446,22 +416,30 @@ export default function Home() {
 
       case 'executors':
         return (
-          <div className="space-y-8">
+          <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">Executors</h2>
-                <p className="text-muted-foreground mt-1">
+                <h2 className="text-2xl font-bold tracking-tight">Executors</h2>
+                <p className="text-muted-foreground">
                   Manage your test execution environments.
                 </p>
               </div>
-              <Button className="btn-gradient-primary gap-2 px-6">
+              <Button className="gap-2">
                 <Plus className="h-4 w-4" />
                 Add Executor
               </Button>
             </div>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {executors.map(executor => (
-                <ExecutorCard key={executor.id} executor={executor} />
+                <Card key={executor.id}>
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold">{executor.name}</h3>
+                    <p className="text-sm text-muted-foreground">{executor.description}</p>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Image: {executor.image}
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           </div>
@@ -469,20 +447,20 @@ export default function Home() {
 
       case 'suites':
         return (
-          <div className="space-y-8">
+          <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">Test Suites</h2>
-                <p className="text-muted-foreground mt-1">
+                <h2 className="text-2xl font-bold tracking-tight">Test Suites</h2>
+                <p className="text-muted-foreground">
                   Group and manage collections of related tests.
                 </p>
               </div>
-              <Button className="btn-gradient-primary gap-2 px-6">
+              <Button className="gap-2">
                 <Plus className="h-4 w-4" />
                 Create Suite
               </Button>
             </div>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {testSuites.map(suite => (
                 <TestSuiteCard key={suite.id} suite={suite} />
               ))}
@@ -493,46 +471,42 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      {/* Premium Header */}
-      <header className="premium-header sticky top-0 z-50 w-full">
-        <div className="container flex h-16 items-center">
-          <div className="mr-6 flex">
-            <a className="mr-8 flex items-center space-x-3" href="/">
-              <div className="relative">
-                <Database className="h-8 w-8 text-primary" />
-                <div className="absolute -top-1 -right-1 h-3 w-3 bg-gradient-to-r from-green-400 to-blue-500 rounded-full animate-pulse"></div>
-              </div>
-              <span className="font-bold text-xl bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">SparkTest</span>
+    <div className="min-h-screen bg-background">
+      {/* Refined Header */}
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container flex h-14 items-center">
+          <div className="mr-4 hidden md:flex">
+            <a className="mr-6 flex items-center space-x-2" href="/">
+              <Database className="h-6 w-6 text-primary" />
+              <span className="hidden font-bold sm:inline-block">SparkTest</span>
             </a>
+            <nav className="flex items-center space-x-6 text-sm font-medium">
+              {navigation.map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key as any)}
+                  className={cn(
+                    "flex items-center space-x-2 px-3 py-2 rounded-md transition-colors",
+                    activeTab === key 
+                      ? "bg-primary text-primary-foreground" 
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </nav>
           </div>
           
-          <nav className="flex items-center space-x-2 text-sm font-medium">
-            {navigation.map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key as any)}
-                className={cn(
-                  "nav-item flex items-center space-x-2",
-                  activeTab === key ? "active" : ""
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{label}</span>
-              </button>
-            ))}
-          </nav>
-
           <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
             <div className="w-full flex-1 md:w-auto md:flex-none">
-              <div className="hidden md:flex items-center space-x-3 text-sm text-muted-foreground bg-muted/30 px-4 py-2 rounded-lg backdrop-blur-sm">
-                <div className="flex items-center space-x-2">
-                  <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
+              <div className="hidden md:flex items-center space-x-2 text-sm text-muted-foreground">
+                <div className="flex items-center space-x-1">
+                  <div className="h-2 w-2 bg-green-500 rounded-full"></div>
                   <Database className="h-4 w-4" />
-                  <span>{defaultConfig?.backend_url || 'http://localhost:3001'}</span>
+                  <span>http://localhost:3001</span>
                 </div>
-                <span>•</span>
-                <span className="capitalize">{defaultConfig?.storage_mode || 'api'}</span>
               </div>
             </div>
             <ThemeToggle />
@@ -541,7 +515,7 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="container py-8">
+      <main className="container py-6">
         {renderTabContent()}
       </main>
 

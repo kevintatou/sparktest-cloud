@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from 'react';
-import { TestDefinition } from '@tatou/core';
+import { Definition } from '@tatou/core';
 import { 
   Dialog, 
   DialogContent, 
@@ -22,8 +22,8 @@ import { cn } from '@/lib/utils';
 interface CreateTestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreateTest: (test: Omit<TestDefinition, 'id' | 'created_at' | 'updated_at'>) => void;
-  initialValues?: Partial<TestDefinition>;
+  onCreateTest: (test: Omit<Definition, 'id' | 'createdAt'>) => void;
+  initialValues?: Partial<Definition>;
 }
 
 export function CreateTestDialog({ 
@@ -35,8 +35,8 @@ export function CreateTestDialog({
   const [formData, setFormData] = useState({
     name: initialValues?.name || '',
     description: initialValues?.description || '',
-    code: initialValues?.code || '// Write your test code here\nconsole.log("Hello, World!");',
-    language: initialValues?.language || 'javascript',
+    commands: initialValues?.commands?.[0] || '// Write your test code here\nconsole.log("Hello, World!");',
+    image: initialValues?.image || 'javascript',
     // Advanced settings
     timeout: '30',
     maxRetries: '3',
@@ -54,8 +54,8 @@ export function CreateTestDialog({
       newErrors.name = 'Test name is required';
     }
     
-    if (!formData.code.trim()) {
-      newErrors.code = 'Test code is required';
+    if (!formData.commands.trim()) {
+      newErrors.commands = 'Test commands are required';
     }
     
     setErrors(newErrors);
@@ -72,16 +72,16 @@ export function CreateTestDialog({
     onCreateTest({
       name: formData.name,
       description: formData.description,
-      code: formData.code,
-      language: formData.language as 'javascript' | 'python' | 'rust',
+      commands: [formData.commands],
+      image: formData.image,
     });
 
     // Reset form
     setFormData({
       name: '',
       description: '',
-      code: '// Write your test code here\nconsole.log("Hello, World!");',
-      language: 'javascript',
+      commands: '// Write your test code here\nconsole.log("Hello, World!");',
+      image: 'javascript',
       timeout: '30',
       maxRetries: '3',
       environment: 'development',
@@ -96,8 +96,8 @@ export function CreateTestDialog({
     setFormData({
       name: '',
       description: '',
-      code: '// Write your test code here\nconsole.log("Hello, World!");',
-      language: 'javascript',
+      commands: '// Write your test code here\nconsole.log("Hello, World!");',
+      image: 'javascript',
       timeout: '30',
       maxRetries: '3',
       environment: 'development',
@@ -146,10 +146,10 @@ export function CreateTestDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="language">Language *</Label>
+              <Label htmlFor="image">Language *</Label>
               <Select 
-                value={formData.language} 
-                onValueChange={(value) => setFormData({ ...formData, language: value as "javascript" | "python" | "rust" })}
+                value={formData.image} 
+                onValueChange={(value) => setFormData({ ...formData, image: value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select language" />
@@ -163,16 +163,16 @@ export function CreateTestDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="code">Test Code *</Label>
+              <Label htmlFor="commands">Test Code *</Label>
               <Textarea
-                id="code"
-                value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                id="commands"
+                value={formData.commands}
+                onChange={(e) => setFormData({ ...formData, commands: e.target.value })}
                 placeholder="Write your test code here..."
-                className={cn("min-h-[200px] font-mono text-sm", errors.code ? 'border-destructive' : '')}
+                className={cn("min-h-[200px] font-mono text-sm", errors.commands ? 'border-destructive' : '')}
               />
-              {errors.code && (
-                <p className="text-sm text-destructive">{errors.code}</p>
+              {errors.commands && (
+                <p className="text-sm text-destructive">{errors.commands}</p>
               )}
             </div>
           </div>
