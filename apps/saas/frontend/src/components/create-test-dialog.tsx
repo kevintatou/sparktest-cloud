@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from 'react';
-import { TestDefinition } from '@sparktest/core';
+import { TestDefinition } from '@tatou/sparktest-core';
 import { 
   Dialog, 
   DialogContent, 
@@ -149,7 +149,7 @@ export function CreateTestDialog({
               <Label htmlFor="language">Language *</Label>
               <Select 
                 value={formData.language} 
-                onValueChange={(value) => setFormData({ ...formData, language: value })}
+                onValueChange={(value) => setFormData({ ...formData, language: value as "javascript" | "python" | "rust" })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select language" />

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TestDefinition, TestRun, Executor, TestSuite, defaultConfig } from '@sparktest/core';
+import { TestDefinition, TestRun, Executor, TestSuite, defaultConfig } from '@tatou/sparktest-core';
 import { ModernTestDefinitionCard, ModernTestRunCard, ModernExecutorCard, ModernTestSuiteCard } from '@/components/modern-cards';
 import { CreateTestDialog } from '@/components/create-test-dialog';
 import { Button } from '@/components/ui/button';

@@ -1,5 +1,5 @@
 {
-  "name": "@sparktest/saas-frontend",
+  "name": "@tatou/sparktest-saas-frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -19,8 +19,8 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tabs": "^1.0.4",
     "@radix-ui/react-toast": "^1.1.5",
-    "@sparktest/core": "workspace:*",
-    "@sparktest/ui": "workspace:*",
+    "@tatou/sparktest-core": "workspace:*",
+    "@tatou/sparktest-ui": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.454.0",

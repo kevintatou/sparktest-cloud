@@ -1,5 +1,5 @@
 import React from 'react';
-import { TestDefinition, TestRun, Executor, TestSuite } from '@sparktest/core';
+import { TestDefinition, TestRun, Executor, TestSuite } from '@tatou/sparktest-core';
 
 // Basic UI components for SparkTest
 export interface TestDefinitionCardProps {
