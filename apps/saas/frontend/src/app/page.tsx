@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { TestDefinition, TestRun, Executor, TestSuite, defaultConfig } from '@tatou/sparktest-core';
-import { ModernTestDefinitionCard, ModernTestRunCard, ModernExecutorCard, ModernTestSuiteCard } from '@/components/modern-cards';
+import { TestDefinitionCard, TestRunCard, ExecutorCard, TestSuiteCard } from '@tatou/sparktest-ui';
 import { CreateTestDialog } from '@/components/create-test-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -315,7 +315,7 @@ export default function Home() {
           </CardHeader>
           <CardContent className="space-y-4">
             {testRuns.slice(0, 3).map(run => (
-              <ModernTestRunCard key={run.id} run={run} />
+              <TestRunCard key={run.id} run={run} />
             ))}
             {testRuns.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
@@ -338,7 +338,7 @@ export default function Home() {
           </CardHeader>
           <CardContent className="space-y-4">
             {testDefinitions.slice(0, 3).map(definition => (
-              <ModernTestDefinitionCard
+              <TestDefinitionCard
                 key={definition.id}
                 definition={definition}
                 onRun={handleRunTest}
@@ -387,7 +387,7 @@ export default function Home() {
             </div>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {testDefinitions.map(definition => (
-                <ModernTestDefinitionCard
+                <TestDefinitionCard
                   key={definition.id}
                   definition={definition}
                   onRun={handleRunTest}
@@ -424,7 +424,7 @@ export default function Home() {
             </div>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {testRuns.map(run => (
-                <ModernTestRunCard key={run.id} run={run} />
+                <TestRunCard key={run.id} run={run} />
               ))}
               {testRuns.length === 0 && (
                 <div className="col-span-full">
@@ -461,7 +461,7 @@ export default function Home() {
             </div>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {executors.map(executor => (
-                <ModernExecutorCard key={executor.id} executor={executor} />
+                <ExecutorCard key={executor.id} executor={executor} />
               ))}
             </div>
           </div>
@@ -484,7 +484,7 @@ export default function Home() {
             </div>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {testSuites.map(suite => (
-                <ModernTestSuiteCard key={suite.id} suite={suite} />
+                <TestSuiteCard key={suite.id} suite={suite} />
               ))}
             </div>
           </div>
