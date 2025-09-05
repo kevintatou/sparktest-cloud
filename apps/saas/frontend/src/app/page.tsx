@@ -194,104 +194,119 @@ export default function Home() {
 
   const renderDashboard = () => (
     <div className="space-y-8">
-      {/* Clean Hero Section */}
+      {/* Enhanced Hero Section */}
       <div className="space-y-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            Welcome back
-          </h1>
-          <p className="text-muted-foreground">
-            Here's what's happening with your tests today.
-          </p>
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent rounded-lg opacity-50"></div>
+          <div className="relative p-6 rounded-lg">
+            <h1 className="text-3xl font-bold tracking-tight">
+              Welcome back
+            </h1>
+            <p className="text-muted-foreground">
+              Here's what's happening with your tests today.
+            </p>
+          </div>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-4 items-start">
           <Button 
             size="lg" 
             onClick={() => setShowCreateDialog(true)} 
-            className="gap-2"
+            className="gap-2 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-md"
           >
             <Plus className="h-4 w-4" />
             Create New Test
           </Button>
-          <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-            <div className="h-2 w-2 bg-green-500 rounded-full"></div>
+          <div className="flex items-center space-x-2 text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-md">
+            <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
             <span>All systems operational</span>
           </div>
         </div>
       </div>
 
-      {/* Clean Stats Cards */}
+      {/* Enhanced Stats Cards with Subtle Spark */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Tests</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 bg-blue-500/10 rounded-md">
+              <FileText className="h-4 w-4 text-blue-600" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{testDefinitions.length}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">+2</span> this week
+              <span className="text-green-600 font-medium">+2</span> this week
             </p>
           </CardContent>
         </Card>
         
-        <Card>
+        <Card className="border-l-4 border-l-green-500 hover:shadow-md transition-shadow duration-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Recent Runs</CardTitle>
-            <Play className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 bg-green-500/10 rounded-md">
+              <Play className="h-4 w-4 text-green-600" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{testRuns.length}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">+5</span> today
+              <span className="text-green-600 font-medium">+5</span> today
             </p>
           </CardContent>
         </Card>
         
-        <Card>
+        <Card className="border-l-4 border-l-purple-500 hover:shadow-md transition-shadow duration-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Executors</CardTitle>
-            <Server className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 bg-purple-500/10 rounded-md">
+              <Server className="h-4 w-4 text-purple-600" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{executors.length}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">100%</span> uptime
+              <span className="text-green-600 font-medium">100%</span> uptime
             </p>
           </CardContent>
         </Card>
         
-        <Card>
+        <Card className="border-l-4 border-l-orange-500 hover:shadow-md transition-shadow duration-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Test Suites</CardTitle>
-            <Layers className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 bg-orange-500/10 rounded-md">
+              <Layers className="h-4 w-4 text-orange-600" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{testSuites.length}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">Active</span> monitoring
+              <span className="text-green-600 font-medium">Active</span> monitoring
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Clean Activity Sections */}
+      {/* Enhanced Activity Sections */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
+        <Card className="hover:shadow-lg transition-shadow duration-300">
+          <CardHeader className="bg-gradient-to-r from-green-50 to-transparent border-b">
             <CardTitle className="flex items-center gap-2">
-              <Play className="h-5 w-5" />
+              <div className="p-1.5 bg-green-100 rounded-md">
+                <Play className="h-4 w-4 text-green-600" />
+              </div>
               Recent Test Runs
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-6">
             {testRuns.slice(0, 3).map(run => (
               <TestRunCard key={run.id} run={run} />
             ))}
             {testRuns.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
-                <Play className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <div className="p-3 bg-muted/30 rounded-full w-fit mx-auto mb-3">
+                  <Play className="h-8 w-8 opacity-50" />
+                </div>
                 <p>No test runs yet</p>
                 <p className="text-sm">Create and run your first test to get started</p>
               </div>
@@ -299,14 +314,16 @@ export default function Home() {
           </CardContent>
         </Card>
         
-        <Card>
-          <CardHeader>
+        <Card className="hover:shadow-lg transition-shadow duration-300">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-transparent border-b">
             <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
+              <div className="p-1.5 bg-blue-100 rounded-md">
+                <FileText className="h-4 w-4 text-blue-600" />
+              </div>
               Quick Actions
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-6">
             {testDefinitions.slice(0, 3).map(definition => (
               <TestDefinitionCard
                 key={definition.id}
@@ -316,13 +333,15 @@ export default function Home() {
             ))}
             {testDefinitions.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
-                <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <div className="p-3 bg-muted/30 rounded-full w-fit mx-auto mb-3">
+                  <FileText className="h-8 w-8 opacity-50" />
+                </div>
                 <p>No test definitions yet</p>
                 <Button
                   onClick={() => setShowCreateDialog(true)}
                   variant="outline"
                   size="sm"
-                  className="mt-3"
+                  className="mt-3 hover:bg-primary hover:text-primary-foreground"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Create Your First Test
@@ -472,50 +491,56 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Refined Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center">
-          <div className="mr-4 hidden md:flex">
-            <a className="mr-6 flex items-center space-x-2" href="/">
-              <Database className="h-6 w-6 text-primary" />
-              <span className="hidden font-bold sm:inline-block">SparkTest</span>
-            </a>
-            <nav className="flex items-center space-x-6 text-sm font-medium">
-              {navigation.map(({ key, label, icon: Icon }) => (
-                <button
-                  key={key}
-                  onClick={() => setActiveTab(key as any)}
-                  className={cn(
-                    "flex items-center space-x-2 px-3 py-2 rounded-md transition-colors",
-                    activeTab === key 
-                      ? "bg-primary text-primary-foreground" 
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{label}</span>
-                </button>
-              ))}
-            </nav>
-          </div>
-          
-          <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
-            <div className="w-full flex-1 md:w-auto md:flex-none">
-              <div className="hidden md:flex items-center space-x-2 text-sm text-muted-foreground">
-                <div className="flex items-center space-x-1">
-                  <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                  <Database className="h-4 w-4" />
-                  <span>http://localhost:3001</span>
-                </div>
+      {/* Enhanced Header with Subtle Gradient */}
+      <header className="bg-gradient-to-r from-background via-background to-primary/5 border-b shadow-sm">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Database className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">SparkTest</h1>
+                <p className="text-xs text-muted-foreground">Test Execution Platform</p>
               </div>
             </div>
-            <ThemeToggle />
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center space-x-2 bg-muted/50 px-3 py-1.5 rounded-md">
+                <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
+                <Database className="h-4 w-4" />
+                <span>http://localhost:3001</span>
+              </div>
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </header>
 
+      {/* OSS-Style Navigation with Subtle Enhancements */}
+      <nav className="bg-background border-b">
+        <div className="container mx-auto px-4">
+          <div className="flex space-x-8">
+            {navigation.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key as any)}
+                className={cn(
+                  "flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm transition-all duration-200",
+                  activeTab === key
+                    ? "border-primary text-primary bg-primary/5"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-primary/30"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </nav>
+
       {/* Main Content */}
-      <main className="container py-6">
+      <main className="container mx-auto px-4 py-8">
         {renderTabContent()}
       </main>
 
