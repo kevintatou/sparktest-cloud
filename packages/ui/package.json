@@ -1,6 +1,6 @@
 {
-  "name": "@tatou/sparktest-ui",
-  "version": "1.2.2",
+  "name": "@tatou/ui",
+  "version": "1.2.3",
   "description": "UI components for SparkTest",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -27,7 +27,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@tatou/sparktest-core": "workspace:*",
+    "@tatou/core": "workspace:*",
     "lucide-react": "^0.454.0",
     "react": "^18",
     "react-dom": "^18"

@@ -6,7 +6,7 @@ description = "Core types and database models for SparkTest SaaS"
 license = "MIT"
 
 [dependencies]
-sparktest-core = "0.1.0"
+core = "0.1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 uuid = { version = "1", features = ["serde", "v4"] }

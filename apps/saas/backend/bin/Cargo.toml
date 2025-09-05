@@ -10,7 +10,7 @@ name = "sparktest-saas-server"
 path = "src/main.rs"
 
 [dependencies]
-sparktest-core = "0.1.0"
+core = "0.1.0"
 sparktest-saas-core = { path = "../core" }
 sparktest-saas-api = { path = "../api" }
 axum = "0.7"

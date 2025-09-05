@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TestDefinition, TestRun, Executor, TestSuite, defaultConfig } from '@tatou/sparktest-core';
-import { TestDefinitionCard, TestRunCard, ExecutorCard, TestSuiteCard } from '@tatou/sparktest-ui';
+import { TestDefinition, TestRun, Executor, TestSuite, defaultConfig } from '../../../../../packages/core/dist/index.js';
+import { TestDefinitionCard, TestRunCard, ExecutorCard, TestSuiteCard } from '../../../../../packages/ui/dist/index.js';
 import { CreateTestDialog } from '@/components/create-test-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -529,10 +529,10 @@ export default function Home() {
                 <div className="flex items-center space-x-2">
                   <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
                   <Database className="h-4 w-4" />
-                  <span>{defaultConfig.backend_url}</span>
+                  <span>{defaultConfig?.backend_url || 'http://localhost:3001'}</span>
                 </div>
                 <span>•</span>
-                <span className="capitalize">{defaultConfig.storage_mode}</span>
+                <span className="capitalize">{defaultConfig?.storage_mode || 'api'}</span>
               </div>
             </div>
             <ThemeToggle />

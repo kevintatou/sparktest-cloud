@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from 'react';
-import { TestDefinition } from '@tatou/sparktest-core';
+import { TestDefinition } from '@tatou/core';
 import { 
   Dialog, 
   DialogContent, 

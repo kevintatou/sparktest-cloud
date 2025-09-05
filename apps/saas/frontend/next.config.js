@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['@tatou/sparktest-core', '@tatou/sparktest-ui'],
+  transpilePackages: ['@tatou/core', '@tatou/ui'],
 };
 
 module.exports = nextConfig;
