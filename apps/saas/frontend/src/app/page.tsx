@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Definition, Run, Executor, Suite } from '@tatou/core';
-import { TestDefinitionCard, TestRunCard, ExecutorCard, TestSuiteCard } from '../../../../../packages/ui/src/index';
+import { TestDefinitionCard, TestRunCard, ExecutorCard, TestSuiteCard } from '@tatou/ui';
 import { CreateTestDialog } from '@/components/create-test-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
