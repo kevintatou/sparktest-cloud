@@ -8,11 +8,21 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Play, Settings, Database, LayoutDashboard, FileText, Server, Layers } from 'lucide-react';
+import { 
+  Plus, Play, Settings, Database, LayoutDashboard, FileText, Server, Layers,
+  Users, Building2, BarChart3, Bell, Plug, Shield, CreditCard, Folder,
+  BookOpen, Monitor, GitBranch, Menu, X, ChevronDown, User
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+type NavigationKey = 
+  | 'dashboard' | 'definitions' | 'runs' | 'executors' | 'suites'
+  | 'teams' | 'users' | 'billing' | 'analytics' | 'monitoring' 
+  | 'integrations' | 'security' | 'audit' | 'projects' | 'docs' | 'settings';
+
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'definitions' | 'runs' | 'executors' | 'suites'>('dashboard');
+  const [activeTab, setActiveTab] = useState<NavigationKey>('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [testDefinitions, setTestDefinitions] = useState<Definition[]>([]);
   const [testRuns, setTestRuns] = useState<Run[]>([]);
   const [executors, setExecutors] = useState<Executor[]>([]);
@@ -184,12 +194,43 @@ export default function Home() {
     });
   };
 
-  const navigation = [
-    { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { key: 'definitions', label: 'Test Definitions', icon: FileText },
-    { key: 'runs', label: 'Test Runs', icon: Play },
-    { key: 'executors', label: 'Executors', icon: Server },
-    { key: 'suites', label: 'Test Suites', icon: Layers },
+  const navigationGroups = [
+    {
+      title: 'Testing',
+      items: [
+        { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { key: 'definitions', label: 'Test Definitions', icon: FileText },
+        { key: 'runs', label: 'Test Runs', icon: Play },
+        { key: 'executors', label: 'Executors', icon: Server },
+        { key: 'suites', label: 'Test Suites', icon: Layers },
+      ]
+    },
+    {
+      title: 'Organization',
+      items: [
+        { key: 'projects', label: 'Projects', icon: Folder },
+        { key: 'teams', label: 'Teams', icon: Users },
+        { key: 'users', label: 'User Management', icon: User },
+        { key: 'billing', label: 'Billing & Plans', icon: CreditCard },
+      ]
+    },
+    {
+      title: 'Analytics & Monitoring',
+      items: [
+        { key: 'analytics', label: 'Analytics', icon: BarChart3 },
+        { key: 'monitoring', label: 'Monitoring & Alerts', icon: Monitor },
+        { key: 'audit', label: 'Audit Logs', icon: BookOpen },
+      ]
+    },
+    {
+      title: 'Platform',
+      items: [
+        { key: 'integrations', label: 'Integrations', icon: Plug },
+        { key: 'security', label: 'Security & Compliance', icon: Shield },
+        { key: 'docs', label: 'API Documentation', icon: GitBranch },
+        { key: 'settings', label: 'Settings', icon: Settings },
+      ]
+    }
   ];
 
   const renderDashboard = () => (
@@ -486,16 +527,467 @@ export default function Home() {
             </div>
           </div>
         );
+
+      case 'projects':
+        return (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight">Projects</h2>
+                <p className="text-muted-foreground">
+                  Organize your tests into projects for better management.
+                </p>
+              </div>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                Create Project
+              </Button>
+            </div>
+            <Card>
+              <CardContent className="text-center py-12">
+                <Folder className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <h3 className="text-lg font-semibold mb-2">No projects yet</h3>
+                <p className="text-muted-foreground mb-4">Create projects to organize your tests and collaborate with teams</p>
+                <Button className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Create Your First Project
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        );
+
+      case 'teams':
+        return (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight">Teams</h2>
+                <p className="text-muted-foreground">
+                  Manage your organization's teams and collaboration.
+                </p>
+              </div>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                Create Team
+              </Button>
+            </div>
+            <Card>
+              <CardContent className="text-center py-12">
+                <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <h3 className="text-lg font-semibold mb-2">No teams configured</h3>
+                <p className="text-muted-foreground mb-4">Set up teams to collaborate on test projects</p>
+                <Button className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Create Your First Team
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        );
+
+      case 'users':
+        return (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight">User Management</h2>
+                <p className="text-muted-foreground">
+                  Manage users, roles, and permissions across your organization.
+                </p>
+              </div>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                Invite User
+              </Button>
+            </div>
+            <Card>
+              <CardContent className="text-center py-12">
+                <User className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <h3 className="text-lg font-semibold mb-2">User management</h3>
+                <p className="text-muted-foreground mb-4">Invite team members and manage permissions</p>
+                <Button className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Invite Team Members
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        );
+
+      case 'billing':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Billing & Plans</h2>
+              <p className="text-muted-foreground">
+                Manage your subscription, billing, and usage.
+              </p>
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Current Plan</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">Professional Plan</span>
+                      <span className="text-2xl font-bold">$29/mo</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Unlimited tests, 5 team members, priority support
+                    </p>
+                    <Button variant="outline" className="w-full">
+                      Manage Subscription
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Usage This Month</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span>Test Runs</span>
+                      <span className="font-medium">1,245 / ∞</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Team Members</span>
+                      <span className="font-medium">3 / 5</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Storage Used</span>
+                      <span className="font-medium">2.4GB / 10GB</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+
+      case 'analytics':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Analytics</h2>
+              <p className="text-muted-foreground">
+                Insights and metrics about your test performance and trends.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
+                  <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600">94.2%</div>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="text-green-600">+2.1%</span> from last month
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Avg Duration</CardTitle>
+                  <Monitor className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">2.4min</div>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="text-green-600">-0.3min</span> faster
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Runs</CardTitle>
+                  <Play className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">1,245</div>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="text-green-600">+12%</span> this month
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Failed Tests</CardTitle>
+                  <Bell className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-red-600">72</div>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="text-red-600">+5</span> this week
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+
+      case 'monitoring':
+        return (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight">Monitoring & Alerts</h2>
+                <p className="text-muted-foreground">
+                  Set up alerts and monitor your test infrastructure health.
+                </p>
+              </div>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                Create Alert
+              </Button>
+            </div>
+            <Card>
+              <CardContent className="text-center py-12">
+                <Bell className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <h3 className="text-lg font-semibold mb-2">No alerts configured</h3>
+                <p className="text-muted-foreground mb-4">Set up monitoring and alerts for your test infrastructure</p>
+                <Button className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Configure Your First Alert
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        );
+
+      case 'integrations':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Integrations</h2>
+              <p className="text-muted-foreground">
+                Connect SparkTest with your development tools and workflows.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[
+                { name: 'GitHub Actions', description: 'Integrate with CI/CD workflows', connected: true },
+                { name: 'Slack', description: 'Get notifications in Slack', connected: false },
+                { name: 'Jira', description: 'Link test results to issues', connected: false },
+                { name: 'Discord', description: 'Team notifications', connected: false },
+                { name: 'Webhook', description: 'Custom HTTP callbacks', connected: false },
+              ].map((integration) => (
+                <Card key={integration.name}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold">{integration.name}</h3>
+                      <div className={cn(
+                        "h-2 w-2 rounded-full",
+                        integration.connected ? "bg-green-500" : "bg-gray-300"
+                      )} />
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-3">{integration.description}</p>
+                    <Button 
+                      variant={integration.connected ? "outline" : "default"} 
+                      size="sm" 
+                      className="w-full"
+                    >
+                      {integration.connected ? 'Configure' : 'Connect'}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        );
+
+      case 'security':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Security & Compliance</h2>
+              <p className="text-muted-foreground">
+                Manage security policies, compliance, and access controls.
+              </p>
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Security Policies</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span>Two-Factor Authentication</span>
+                    <div className="h-2 w-2 bg-green-500 rounded-full" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>SSO Integration</span>
+                    <div className="h-2 w-2 bg-yellow-500 rounded-full" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>API Key Rotation</span>
+                    <div className="h-2 w-2 bg-green-500 rounded-full" />
+                  </div>
+                  <Button variant="outline" className="w-full mt-4">
+                    Manage Security Settings
+                  </Button>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Compliance</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span>SOC 2 Type II</span>
+                    <div className="h-2 w-2 bg-green-500 rounded-full" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>GDPR Compliant</span>
+                    <div className="h-2 w-2 bg-green-500 rounded-full" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>ISO 27001</span>
+                    <div className="h-2 w-2 bg-green-500 rounded-full" />
+                  </div>
+                  <Button variant="outline" className="w-full mt-4">
+                    View Compliance Reports
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+
+      case 'audit':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Audit Logs</h2>
+              <p className="text-muted-foreground">
+                Track all user actions and system events for compliance and security.
+              </p>
+            </div>
+            <Card>
+              <CardContent className="text-center py-12">
+                <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <h3 className="text-lg font-semibold mb-2">Audit logs</h3>
+                <p className="text-muted-foreground mb-4">All user actions and system events are logged here</p>
+                <Button variant="outline">
+                  View Recent Activity
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        );
+
+      case 'docs':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">API Documentation</h2>
+              <p className="text-muted-foreground">
+                Complete API reference and integration guides.
+              </p>
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Quick Start</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Get started with the SparkTest API in minutes
+                  </p>
+                  <Button className="w-full">
+                    View Quick Start Guide
+                  </Button>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>API Reference</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Complete API documentation with examples
+                  </p>
+                  <Button variant="outline" className="w-full">
+                    Browse API Reference
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+
+      case 'settings':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
+              <p className="text-muted-foreground">
+                Configure your organization and platform preferences.
+              </p>
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Organization Settings</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">Organization Name</label>
+                    <p className="text-sm text-muted-foreground">Acme Corp</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Custom Domain</label>
+                    <p className="text-sm text-muted-foreground">tests.acmecorp.com</p>
+                  </div>
+                  <Button variant="outline" className="w-full">
+                    Edit Organization
+                  </Button>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Platform Settings</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">Default Executor</label>
+                    <p className="text-sm text-muted-foreground">Kubernetes Cluster</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Retention Policy</label>
+                    <p className="text-sm text-muted-foreground">90 days</p>
+                  </div>
+                  <Button variant="outline" className="w-full">
+                    Configure Platform
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Enhanced Header with Subtle Gradient */}
+      {/* Enhanced Header */}
       <header className="bg-gradient-to-r from-background via-background to-primary/5 border-b shadow-sm">
-        <div className="container mx-auto px-4 py-6">
+        <div className="container mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="lg:hidden"
+              >
+                {sidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+              </Button>
               <div className="p-2 bg-primary/10 rounded-lg">
                 <Database className="h-6 w-6 text-primary" />
               </div>
@@ -516,33 +1008,62 @@ export default function Home() {
         </div>
       </header>
 
-      {/* OSS-Style Navigation with Subtle Enhancements */}
-      <nav className="bg-background border-b">
-        <div className="container mx-auto px-4">
-          <div className="flex space-x-8">
-            {navigation.map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key as any)}
-                className={cn(
-                  "flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm transition-all duration-200",
-                  activeTab === key
-                    ? "border-primary text-primary bg-primary/5"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-primary/30"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{label}</span>
-              </button>
-            ))}
+      <div className="flex">
+        {/* Vertical Sidebar Navigation */}
+        <aside className={cn(
+          "fixed inset-y-0 left-0 z-50 w-72 bg-background border-r transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}>
+          <div className="flex flex-col h-full pt-16 lg:pt-0">
+            <div className="flex-1 overflow-y-auto py-6">
+              <nav className="px-4 space-y-6">
+                {navigationGroups.map((group) => (
+                  <div key={group.title}>
+                    <h3 className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      {group.title}
+                    </h3>
+                    <div className="space-y-1">
+                      {group.items.map(({ key, label, icon: Icon }) => (
+                        <button
+                          key={key}
+                          onClick={() => {
+                            setActiveTab(key as NavigationKey);
+                            if (window.innerWidth < 1024) setSidebarOpen(false);
+                          }}
+                          className={cn(
+                            "flex items-center space-x-3 w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                            activeTab === key
+                              ? "bg-primary text-primary-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                          )}
+                        >
+                          <Icon className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </nav>
+            </div>
           </div>
-        </div>
-      </nav>
+        </aside>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        {renderTabContent()}
-      </main>
+        {/* Mobile overlay */}
+        {sidebarOpen && (
+          <div 
+            className="fixed inset-0 bg-black/20 z-40 lg:hidden" 
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* Main Content */}
+        <main className="flex-1 lg:ml-0">
+          <div className="container mx-auto px-4 py-8 max-w-7xl">
+            {renderTabContent()}
+          </div>
+        </main>
+      </div>
 
       {/* Create Test Dialog */}
       <CreateTestDialog
