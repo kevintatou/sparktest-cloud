@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { 
   Plus, Play, Settings, Database, LayoutDashboard, FileText, Server, Layers,
   Users, Building2, BarChart3, Bell, Plug, Shield, CreditCard, Folder,
-  BookOpen, Monitor, GitBranch, Menu, X, ChevronDown, User, ChevronRight,
+  BookOpen, Monitor, GitBranch, Menu, ChevronDown, User, ChevronRight,
   Zap
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -979,23 +979,6 @@ export default function Home() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="lg:hidden"
-              >
-                {sidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="hidden lg:flex"
-                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              >
-                {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-              </Button>
               <div className="relative">
                 <div className="p-2 bg-muted/50 rounded-lg border">
                   <Zap className="h-6 w-6 text-primary" />
@@ -1035,7 +1018,6 @@ export default function Home() {
                   <div className="p-1.5 bg-primary/10 rounded-md">
                     <Zap className="h-4 w-4 text-primary" />
                   </div>
-                  <span className="text-sm font-medium text-muted-foreground">SaaS Platform</span>
                 </div>
               </div>
             )}
@@ -1093,7 +1075,13 @@ export default function Home() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                onClick={() => {
+                  setSidebarCollapsed(!sidebarCollapsed);
+                  // On mobile, also close the sidebar when collapsing
+                  if (window.innerWidth < 1024 && !sidebarCollapsed) {
+                    setSidebarOpen(false);
+                  }
+                }}
                 className={cn(
                   "w-full justify-start group",
                   sidebarCollapsed && "justify-center px-0"
