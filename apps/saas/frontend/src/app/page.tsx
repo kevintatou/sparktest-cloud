@@ -11,7 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import { 
   Plus, Play, Settings, Database, LayoutDashboard, FileText, Server, Layers,
   Users, Building2, BarChart3, Bell, Plug, Shield, CreditCard, Folder,
-  BookOpen, Monitor, GitBranch, Menu, X, ChevronDown, User
+  BookOpen, Monitor, GitBranch, Menu, X, ChevronDown, User, ChevronRight,
+  Sparkles, Zap
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +24,7 @@ type NavigationKey =
 export default function Home() {
   const [activeTab, setActiveTab] = useState<NavigationKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [testDefinitions, setTestDefinitions] = useState<Definition[]>([]);
   const [testRuns, setTestRuns] = useState<Run[]>([]);
   const [executors, setExecutors] = useState<Executor[]>([]);
@@ -253,9 +255,9 @@ export default function Home() {
           <Button 
             size="lg" 
             onClick={() => setShowCreateDialog(true)} 
-            className="gap-2 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-md"
+            className="gap-2 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 group"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4 group-hover:rotate-90 transition-transform duration-200" />
             Create New Test
           </Button>
           <div className="flex items-center space-x-2 text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-md">
@@ -265,13 +267,13 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Enhanced Stats Cards with Subtle Spark */}
+      {/* Enhanced Stats Cards with Subtle Spark and Hover Effects */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200">
+        <Card className="border-l-4 border-l-blue-500 hover:shadow-lg hover:border-l-blue-600 transition-all duration-300 transform hover:scale-[1.02] group">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Tests</CardTitle>
-            <div className="p-2 bg-blue-500/10 rounded-md">
-              <FileText className="h-4 w-4 text-blue-600" />
+            <div className="p-2 bg-gradient-to-br from-blue-500/20 to-blue-500/5 rounded-md group-hover:from-blue-500/30 group-hover:to-blue-500/10 transition-all duration-200">
+              <FileText className="h-4 w-4 text-blue-600 group-hover:scale-110 transition-transform duration-200" />
             </div>
           </CardHeader>
           <CardContent>
@@ -282,11 +284,11 @@ export default function Home() {
           </CardContent>
         </Card>
         
-        <Card className="border-l-4 border-l-green-500 hover:shadow-md transition-shadow duration-200">
+        <Card className="border-l-4 border-l-green-500 hover:shadow-lg hover:border-l-green-600 transition-all duration-300 transform hover:scale-[1.02] group">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Recent Runs</CardTitle>
-            <div className="p-2 bg-green-500/10 rounded-md">
-              <Play className="h-4 w-4 text-green-600" />
+            <div className="p-2 bg-gradient-to-br from-green-500/20 to-green-500/5 rounded-md group-hover:from-green-500/30 group-hover:to-green-500/10 transition-all duration-200">
+              <Play className="h-4 w-4 text-green-600 group-hover:scale-110 transition-transform duration-200" />
             </div>
           </CardHeader>
           <CardContent>
@@ -297,11 +299,11 @@ export default function Home() {
           </CardContent>
         </Card>
         
-        <Card className="border-l-4 border-l-purple-500 hover:shadow-md transition-shadow duration-200">
+        <Card className="border-l-4 border-l-purple-500 hover:shadow-lg hover:border-l-purple-600 transition-all duration-300 transform hover:scale-[1.02] group">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Executors</CardTitle>
-            <div className="p-2 bg-purple-500/10 rounded-md">
-              <Server className="h-4 w-4 text-purple-600" />
+            <div className="p-2 bg-gradient-to-br from-purple-500/20 to-purple-500/5 rounded-md group-hover:from-purple-500/30 group-hover:to-purple-500/10 transition-all duration-200">
+              <Server className="h-4 w-4 text-purple-600 group-hover:scale-110 transition-transform duration-200" />
             </div>
           </CardHeader>
           <CardContent>
@@ -312,11 +314,11 @@ export default function Home() {
           </CardContent>
         </Card>
         
-        <Card className="border-l-4 border-l-orange-500 hover:shadow-md transition-shadow duration-200">
+        <Card className="border-l-4 border-l-orange-500 hover:shadow-lg hover:border-l-orange-600 transition-all duration-300 transform hover:scale-[1.02] group">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Test Suites</CardTitle>
-            <div className="p-2 bg-orange-500/10 rounded-md">
-              <Layers className="h-4 w-4 text-orange-600" />
+            <div className="p-2 bg-gradient-to-br from-orange-500/20 to-orange-500/5 rounded-md group-hover:from-orange-500/30 group-hover:to-orange-500/10 transition-all duration-200">
+              <Layers className="h-4 w-4 text-orange-600 group-hover:scale-110 transition-transform duration-200" />
             </div>
           </CardHeader>
           <CardContent>
@@ -975,8 +977,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Enhanced Header */}
-      <header className="bg-gradient-to-r from-background via-background to-primary/5 border-b shadow-sm">
+      {/* Enhanced Header with Pizzazz */}
+      <header className="bg-gradient-to-r from-background via-background to-primary/5 border-b shadow-sm backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
@@ -984,21 +986,38 @@ export default function Home() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="lg:hidden"
+                className="lg:hidden hover:bg-primary/10 transition-colors"
               >
                 {sidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </Button>
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Database className="h-6 w-6 text-primary" />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="hidden lg:flex hover:bg-primary/10 transition-colors"
+                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+              </Button>
+              <div className="relative">
+                <div className="p-2 bg-gradient-to-br from-primary/20 to-primary/5 rounded-lg border border-primary/20 shadow-sm">
+                  <div className="relative">
+                    <Database className="h-6 w-6 text-primary" />
+                    <div className="absolute -top-1 -right-1 h-2 w-2 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full animate-pulse shadow-sm"></div>
+                  </div>
+                </div>
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight">SparkTest</h1>
+                <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text">
+                  SparkTest
+                  <Sparkles className="inline h-4 w-4 ml-1 text-primary/70 animate-pulse" />
+                </h1>
                 <p className="text-xs text-muted-foreground">Test Execution Platform</p>
               </div>
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center space-x-2 bg-muted/50 px-3 py-1.5 rounded-md">
-                <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
+              <div className="flex items-center space-x-2 bg-gradient-to-r from-muted/50 to-muted/30 px-3 py-1.5 rounded-md border border-border/50 hover:border-border transition-colors">
+                <div className="h-2 w-2 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full animate-pulse shadow-sm"></div>
                 <Database className="h-4 w-4" />
                 <span>http://localhost:3001</span>
               </div>
@@ -1009,19 +1028,34 @@ export default function Home() {
       </header>
 
       <div className="flex">
-        {/* Vertical Sidebar Navigation */}
+        {/* Enhanced Vertical Sidebar Navigation with Collapsed State */}
         <aside className={cn(
-          "fixed inset-y-0 left-0 z-50 w-72 bg-background border-r transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed inset-y-0 left-0 z-50 bg-background border-r shadow-lg transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full",
+          sidebarCollapsed ? "w-16" : "w-72"
         )}>
           <div className="flex flex-col h-full pt-16 lg:pt-0">
+            {/* Sidebar Header - only show when not collapsed */}
+            {!sidebarCollapsed && (
+              <div className="px-4 py-4 border-b bg-gradient-to-r from-primary/5 to-transparent">
+                <div className="flex items-center space-x-2">
+                  <div className="p-1.5 bg-primary/10 rounded-md">
+                    <Zap className="h-4 w-4 text-primary" />
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">SaaS Platform</span>
+                </div>
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto py-6">
-              <nav className="px-4 space-y-6">
+              <nav className={cn("space-y-6", sidebarCollapsed ? "px-2" : "px-4")}>
                 {navigationGroups.map((group) => (
                   <div key={group.title}>
-                    <h3 className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      {group.title}
-                    </h3>
+                    {!sidebarCollapsed && (
+                      <h3 className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        {group.title}
+                      </h3>
+                    )}
                     <div className="space-y-1">
                       {group.items.map(({ key, label, icon: Icon }) => (
                         <button
@@ -1031,34 +1065,72 @@ export default function Home() {
                             if (window.innerWidth < 1024) setSidebarOpen(false);
                           }}
                           className={cn(
-                            "flex items-center space-x-3 w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                            "group flex items-center w-full rounded-lg text-sm font-medium transition-all duration-200 relative overflow-hidden",
+                            sidebarCollapsed ? "p-3 justify-center" : "space-x-3 px-3 py-2",
                             activeTab === key
-                              ? "bg-primary text-primary-foreground shadow-sm"
-                              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                              ? "bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-md hover:shadow-lg"
+                              : "text-muted-foreground hover:text-foreground hover:bg-gradient-to-r hover:from-muted/50 hover:to-muted/30"
                           )}
+                          title={sidebarCollapsed ? label : undefined}
                         >
-                          <Icon className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate">{label}</span>
+                          <Icon className={cn(
+                            "flex-shrink-0 transition-transform duration-200",
+                            sidebarCollapsed ? "h-5 w-5" : "h-4 w-4",
+                            activeTab === key ? "scale-110" : "group-hover:scale-105"
+                          )} />
+                          {!sidebarCollapsed && (
+                            <span className="truncate">{label}</span>
+                          )}
+                          {/* Active indicator dot for collapsed mode */}
+                          {sidebarCollapsed && activeTab === key && (
+                            <div className="absolute -top-1 -right-1 h-2 w-2 bg-primary-foreground rounded-full animate-pulse"></div>
+                          )}
                         </button>
                       ))}
                     </div>
+                    {sidebarCollapsed && group !== navigationGroups[navigationGroups.length - 1] && (
+                      <div className="h-px bg-border/50 mx-2 my-3"></div>
+                    )}
                   </div>
                 ))}
               </nav>
             </div>
+
+            {/* Sidebar Footer with Collapse Toggle */}
+            <div className={cn("p-4 border-t bg-gradient-to-r from-muted/30 to-transparent", sidebarCollapsed && "px-2")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className={cn(
+                  "w-full justify-start hover:bg-primary/10 transition-colors group",
+                  sidebarCollapsed && "justify-center px-0"
+                )}
+                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                <ChevronRight className={cn(
+                  "h-4 w-4 transition-transform duration-200",
+                  !sidebarCollapsed && "rotate-180"
+                )} />
+                {!sidebarCollapsed && <span className="ml-2 text-xs">Collapse</span>}
+              </Button>
+            </div>
           </div>
         </aside>
 
-        {/* Mobile overlay */}
+        {/* Mobile overlay with enhanced blur */}
         {sidebarOpen && (
           <div 
-            className="fixed inset-0 bg-black/20 z-40 lg:hidden" 
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300" 
             onClick={() => setSidebarOpen(false)}
           />
         )}
 
-        {/* Main Content */}
-        <main className="flex-1 lg:ml-0">
+        {/* Main Content with Dynamic Margin */}
+        <main className={cn(
+          "flex-1 transition-all duration-300 ease-in-out lg:ml-0",
+          sidebarCollapsed ? "lg:ml-16" : "lg:ml-0"
+        )}>
           <div className="container mx-auto px-4 py-8 max-w-7xl">
             {renderTabContent()}
           </div>
