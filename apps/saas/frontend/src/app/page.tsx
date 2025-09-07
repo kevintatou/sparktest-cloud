@@ -12,7 +12,7 @@ import {
   Plus, Play, Settings, Database, LayoutDashboard, FileText, Server, Layers,
   Users, Building2, BarChart3, Bell, Plug, Shield, CreditCard, Folder,
   BookOpen, Monitor, GitBranch, Menu, X, ChevronDown, User, ChevronRight,
-  Sparkles, Zap
+  Zap
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -237,43 +237,40 @@ export default function Home() {
 
   const renderDashboard = () => (
     <div className="space-y-8">
-      {/* Enhanced Hero Section */}
+      {/* Hero Section */}
       <div className="space-y-4">
-        <div className="relative">
-          <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent rounded-lg opacity-50"></div>
-          <div className="relative p-6 rounded-lg">
-            <h1 className="text-3xl font-bold tracking-tight">
-              Welcome back
-            </h1>
-            <p className="text-muted-foreground">
-              Here's what's happening with your tests today.
-            </p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Welcome back
+          </h1>
+          <p className="text-muted-foreground">
+            Here's what's happening with your tests today.
+          </p>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-4 items-start">
           <Button 
             size="lg" 
             onClick={() => setShowCreateDialog(true)} 
-            className="gap-2 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 group"
+            className="gap-2"
           >
-            <Plus className="h-4 w-4 group-hover:rotate-90 transition-transform duration-200" />
+            <Plus className="h-4 w-4" />
             Create New Test
           </Button>
           <div className="flex items-center space-x-2 text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-md">
-            <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
+            <div className="h-2 w-2 bg-green-500 rounded-full"></div>
             <span>All systems operational</span>
           </div>
         </div>
       </div>
 
-      {/* Enhanced Stats Cards with Subtle Spark and Hover Effects */}
+      {/* Stats Cards with Simple Styling */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-l-4 border-l-blue-500 hover:shadow-lg hover:border-l-blue-600 transition-all duration-300 transform hover:scale-[1.02] group">
+        <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Tests</CardTitle>
-            <div className="p-2 bg-gradient-to-br from-blue-500/20 to-blue-500/5 rounded-md group-hover:from-blue-500/30 group-hover:to-blue-500/10 transition-all duration-200">
-              <FileText className="h-4 w-4 text-blue-600 group-hover:scale-110 transition-transform duration-200" />
+            <div className="p-2 bg-blue-50 rounded-md">
+              <FileText className="h-4 w-4 text-blue-600" />
             </div>
           </CardHeader>
           <CardContent>
@@ -284,11 +281,11 @@ export default function Home() {
           </CardContent>
         </Card>
         
-        <Card className="border-l-4 border-l-green-500 hover:shadow-lg hover:border-l-green-600 transition-all duration-300 transform hover:scale-[1.02] group">
+        <Card className="border-l-4 border-l-green-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Recent Runs</CardTitle>
-            <div className="p-2 bg-gradient-to-br from-green-500/20 to-green-500/5 rounded-md group-hover:from-green-500/30 group-hover:to-green-500/10 transition-all duration-200">
-              <Play className="h-4 w-4 text-green-600 group-hover:scale-110 transition-transform duration-200" />
+            <div className="p-2 bg-green-50 rounded-md">
+              <Play className="h-4 w-4 text-green-600" />
             </div>
           </CardHeader>
           <CardContent>
@@ -299,11 +296,11 @@ export default function Home() {
           </CardContent>
         </Card>
         
-        <Card className="border-l-4 border-l-purple-500 hover:shadow-lg hover:border-l-purple-600 transition-all duration-300 transform hover:scale-[1.02] group">
+        <Card className="border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Executors</CardTitle>
-            <div className="p-2 bg-gradient-to-br from-purple-500/20 to-purple-500/5 rounded-md group-hover:from-purple-500/30 group-hover:to-purple-500/10 transition-all duration-200">
-              <Server className="h-4 w-4 text-purple-600 group-hover:scale-110 transition-transform duration-200" />
+            <div className="p-2 bg-purple-50 rounded-md">
+              <Server className="h-4 w-4 text-purple-600" />
             </div>
           </CardHeader>
           <CardContent>
@@ -314,11 +311,11 @@ export default function Home() {
           </CardContent>
         </Card>
         
-        <Card className="border-l-4 border-l-orange-500 hover:shadow-lg hover:border-l-orange-600 transition-all duration-300 transform hover:scale-[1.02] group">
+        <Card className="border-l-4 border-l-orange-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Test Suites</CardTitle>
-            <div className="p-2 bg-gradient-to-br from-orange-500/20 to-orange-500/5 rounded-md group-hover:from-orange-500/30 group-hover:to-orange-500/10 transition-all duration-200">
-              <Layers className="h-4 w-4 text-orange-600 group-hover:scale-110 transition-transform duration-200" />
+            <div className="p-2 bg-orange-50 rounded-md">
+              <Layers className="h-4 w-4 text-orange-600" />
             </div>
           </CardHeader>
           <CardContent>
@@ -330,10 +327,10 @@ export default function Home() {
         </Card>
       </div>
 
-      {/* Enhanced Activity Sections */}
+      {/* Activity Sections */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader className="bg-gradient-to-r from-green-50 to-transparent border-b">
+        <Card>
+          <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2">
               <div className="p-1.5 bg-green-100 rounded-md">
                 <Play className="h-4 w-4 text-green-600" />
@@ -357,8 +354,8 @@ export default function Home() {
           </CardContent>
         </Card>
         
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader className="bg-gradient-to-r from-blue-50 to-transparent border-b">
+        <Card>
+          <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2">
               <div className="p-1.5 bg-blue-100 rounded-md">
                 <FileText className="h-4 w-4 text-blue-600" />
@@ -384,7 +381,7 @@ export default function Home() {
                   onClick={() => setShowCreateDialog(true)}
                   variant="outline"
                   size="sm"
-                  className="mt-3 hover:bg-primary hover:text-primary-foreground"
+                  className="mt-3"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Create Your First Test
@@ -977,8 +974,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Enhanced Header with Pizzazz */}
-      <header className="bg-gradient-to-r from-background via-background to-primary/5 border-b shadow-sm backdrop-blur-sm">
+      {/* Enhanced Header */}
+      <header className="bg-background border-b">
         <div className="container mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
@@ -986,7 +983,7 @@ export default function Home() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="lg:hidden hover:bg-primary/10 transition-colors"
+                className="lg:hidden"
               >
                 {sidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </Button>
@@ -994,30 +991,26 @@ export default function Home() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="hidden lg:flex hover:bg-primary/10 transition-colors"
+                className="hidden lg:flex"
                 title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               >
                 {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </Button>
               <div className="relative">
-                <div className="p-2 bg-gradient-to-br from-primary/20 to-primary/5 rounded-lg border border-primary/20 shadow-sm">
-                  <div className="relative">
-                    <Database className="h-6 w-6 text-primary" />
-                    <div className="absolute -top-1 -right-1 h-2 w-2 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full animate-pulse shadow-sm"></div>
-                  </div>
+                <div className="p-2 bg-muted/50 rounded-lg border">
+                  <Zap className="h-6 w-6 text-primary" />
                 </div>
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text">
+                <h1 className="text-2xl font-bold tracking-tight">
                   SparkTest
-                  <Sparkles className="inline h-4 w-4 ml-1 text-primary/70 animate-pulse" />
                 </h1>
                 <p className="text-xs text-muted-foreground">Test Execution Platform</p>
               </div>
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center space-x-2 bg-gradient-to-r from-muted/50 to-muted/30 px-3 py-1.5 rounded-md border border-border/50 hover:border-border transition-colors">
-                <div className="h-2 w-2 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full animate-pulse shadow-sm"></div>
+              <div className="flex items-center space-x-2 bg-muted/50 px-3 py-1.5 rounded-md border">
+                <div className="h-2 w-2 bg-green-500 rounded-full"></div>
                 <Database className="h-4 w-4" />
                 <span>http://localhost:3001</span>
               </div>
@@ -1028,16 +1021,16 @@ export default function Home() {
       </header>
 
       <div className="flex">
-        {/* Enhanced Vertical Sidebar Navigation with Collapsed State */}
+        {/* Sidebar with Simple Styling */}
         <aside className={cn(
-          "fixed inset-y-0 left-0 z-50 bg-background border-r shadow-lg transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
+          "fixed inset-y-0 left-0 z-50 bg-background border-r transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           sidebarCollapsed ? "w-16" : "w-72"
         )}>
           <div className="flex flex-col h-full pt-16 lg:pt-0">
             {/* Sidebar Header - only show when not collapsed */}
             {!sidebarCollapsed && (
-              <div className="px-4 py-4 border-b bg-gradient-to-r from-primary/5 to-transparent">
+              <div className="px-4 py-4 border-b">
                 <div className="flex items-center space-x-2">
                   <div className="p-1.5 bg-primary/10 rounded-md">
                     <Zap className="h-4 w-4 text-primary" />
@@ -1065,25 +1058,24 @@ export default function Home() {
                             if (window.innerWidth < 1024) setSidebarOpen(false);
                           }}
                           className={cn(
-                            "group flex items-center w-full rounded-lg text-sm font-medium transition-all duration-200 relative overflow-hidden",
+                            "group flex items-center w-full rounded-lg text-sm font-medium transition-colors",
                             sidebarCollapsed ? "p-3 justify-center" : "space-x-3 px-3 py-2",
                             activeTab === key
-                              ? "bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-md hover:shadow-lg"
-                              : "text-muted-foreground hover:text-foreground hover:bg-gradient-to-r hover:from-muted/50 hover:to-muted/30"
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted"
                           )}
                           title={sidebarCollapsed ? label : undefined}
                         >
                           <Icon className={cn(
-                            "flex-shrink-0 transition-transform duration-200",
-                            sidebarCollapsed ? "h-5 w-5" : "h-4 w-4",
-                            activeTab === key ? "scale-110" : "group-hover:scale-105"
+                            "flex-shrink-0",
+                            sidebarCollapsed ? "h-5 w-5" : "h-4 w-4"
                           )} />
                           {!sidebarCollapsed && (
                             <span className="truncate">{label}</span>
                           )}
                           {/* Active indicator dot for collapsed mode */}
                           {sidebarCollapsed && activeTab === key && (
-                            <div className="absolute -top-1 -right-1 h-2 w-2 bg-primary-foreground rounded-full animate-pulse"></div>
+                            <div className="absolute -top-1 -right-1 h-2 w-2 bg-primary-foreground rounded-full"></div>
                           )}
                         </button>
                       ))}
@@ -1097,13 +1089,13 @@ export default function Home() {
             </div>
 
             {/* Sidebar Footer with Collapse Toggle */}
-            <div className={cn("p-4 border-t bg-gradient-to-r from-muted/30 to-transparent", sidebarCollapsed && "px-2")}>
+            <div className={cn("p-4 border-t", sidebarCollapsed && "px-2")}>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                 className={cn(
-                  "w-full justify-start hover:bg-primary/10 transition-colors group",
+                  "w-full justify-start group",
                   sidebarCollapsed && "justify-center px-0"
                 )}
                 title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -1118,10 +1110,10 @@ export default function Home() {
           </div>
         </aside>
 
-        {/* Mobile overlay with enhanced blur */}
+        {/* Mobile overlay */}
         {sidebarOpen && (
           <div 
-            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300" 
+            className="fixed inset-0 bg-black/20 z-40 lg:hidden" 
             onClick={() => setSidebarOpen(false)}
           />
         )}
