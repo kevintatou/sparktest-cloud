@@ -10,7 +10,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Plus, Play, Settings, Database, LayoutDashboard, FileText, Server, Layers,
-  Users, Building2, BarChart3, Bell, Plug, Shield, CreditCard, Folder,
+  Users, Building2, BarChart3, Bell, Plug, CreditCard, Folder,
   BookOpen, Monitor, GitBranch, Menu, ChevronDown, User, ChevronRight,
   Zap
 } from 'lucide-react';
@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 type NavigationKey = 
   | 'dashboard' | 'definitions' | 'runs' | 'executors' | 'suites'
   | 'teams' | 'users' | 'billing' | 'analytics' | 'monitoring' 
-  | 'integrations' | 'security' | 'audit' | 'projects' | 'docs' | 'settings';
+  | 'integrations' | 'audit' | 'projects' | 'docs' | 'settings';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<NavigationKey>('dashboard');
@@ -228,7 +228,6 @@ export default function Home() {
       title: 'Platform',
       items: [
         { key: 'integrations', label: 'Integrations', icon: Plug },
-        { key: 'security', label: 'Security & Compliance', icon: Shield },
         { key: 'docs', label: 'API Documentation', icon: GitBranch },
         { key: 'settings', label: 'Settings', icon: Settings },
       ]
@@ -800,64 +799,6 @@ export default function Home() {
           </div>
         );
 
-      case 'security':
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight">Security & Compliance</h2>
-              <p className="text-muted-foreground">
-                Manage security policies, compliance, and access controls.
-              </p>
-            </div>
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Security Policies</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span>Two-Factor Authentication</span>
-                    <div className="h-2 w-2 bg-green-500 rounded-full" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>SSO Integration</span>
-                    <div className="h-2 w-2 bg-yellow-500 rounded-full" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>API Key Rotation</span>
-                    <div className="h-2 w-2 bg-green-500 rounded-full" />
-                  </div>
-                  <Button variant="outline" className="w-full mt-4">
-                    Manage Security Settings
-                  </Button>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Compliance</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span>SOC 2 Type II</span>
-                    <div className="h-2 w-2 bg-green-500 rounded-full" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>GDPR Compliant</span>
-                    <div className="h-2 w-2 bg-green-500 rounded-full" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>ISO 27001</span>
-                    <div className="h-2 w-2 bg-green-500 rounded-full" />
-                  </div>
-                  <Button variant="outline" className="w-full mt-4">
-                    View Compliance Reports
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        );
-
       case 'audit':
         return (
           <div className="space-y-6">
@@ -1014,11 +955,7 @@ export default function Home() {
             {/* Sidebar Header - only show when not collapsed */}
             {!sidebarCollapsed && (
               <div className="px-4 py-4 border-b">
-                <div className="flex items-center space-x-2">
-                  <div className="p-1.5 bg-primary/10 rounded-md">
-                    <Zap className="h-4 w-4 text-primary" />
-                  </div>
-                </div>
+                {/* Header content removed for cleaner look */}
               </div>
             )}
 
