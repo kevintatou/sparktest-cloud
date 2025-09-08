@@ -342,12 +342,12 @@ export default function Home() {
               <TestRunCard key={run.id} run={run} />
             ))}
             {testRuns.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                <div className="p-3 bg-muted/30 rounded-full w-fit mx-auto mb-3">
-                  <Play className="h-8 w-8 opacity-50" />
+              <div className="text-center py-6 text-muted-foreground">
+                <div className="p-2 bg-muted/30 rounded-md w-fit mx-auto mb-3">
+                  <Play className="h-5 w-5 opacity-50" />
                 </div>
-                <p>No test runs yet</p>
-                <p className="text-sm">Create and run your first test to get started</p>
+                <p className="text-sm">No test runs yet</p>
+                <p className="text-xs">Create and run your first test to get started</p>
               </div>
             )}
           </CardContent>
@@ -371,11 +371,11 @@ export default function Home() {
               />
             ))}
             {testDefinitions.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                <div className="p-3 bg-muted/30 rounded-full w-fit mx-auto mb-3">
-                  <FileText className="h-8 w-8 opacity-50" />
+              <div className="text-center py-6 text-muted-foreground">
+                <div className="p-2 bg-muted/30 rounded-md w-fit mx-auto mb-3">
+                  <FileText className="h-5 w-5 opacity-50" />
                 </div>
-                <p>No test definitions yet</p>
+                <p className="text-sm">No test definitions yet</p>
                 <Button
                   onClick={() => setShowCreateDialog(true)}
                   variant="outline"
@@ -977,11 +977,11 @@ export default function Home() {
                             if (window.innerWidth < 1024) setSidebarOpen(false);
                           }}
                           className={cn(
-                            "group flex items-center w-full rounded-lg text-sm font-medium transition-colors",
+                            "group flex items-center w-full rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer",
                             sidebarCollapsed ? "p-3 justify-center" : "space-x-3 px-3 py-2",
                             activeTab === key
-                              ? "bg-primary text-primary-foreground"
-                              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                              ? "bg-primary text-primary-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted/80 hover:scale-[1.02]"
                           )}
                           title={sidebarCollapsed ? label : undefined}
                         >
