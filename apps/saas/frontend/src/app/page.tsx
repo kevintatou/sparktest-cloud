@@ -25,121 +25,106 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<NavigationKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [testDefinitions, setTestDefinitions] = useState<Definition[]>([]);
-  const [testRuns, setTestRuns] = useState<Run[]>([]);
-  const [executors, setExecutors] = useState<Executor[]>([]);
-  const [testSuites, setTestSuites] = useState<Suite[]>([]);
+  const [testDefinitions, setTestDefinitions] = useState<Definition[]>([
+    {
+      id: '1',
+      name: 'Basic API Test',
+      description: 'Tests the basic API endpoints for user authentication and data retrieval',
+      image: 'javascript',
+      commands: ['console.log("Hello, world!");'],
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: '2',
+      name: 'Database Connection Test',
+      description: 'Tests database connectivity and basic CRUD operations',
+      image: 'python',
+      commands: ['import sqlite3', 'print("Database test")'],
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: '3',
+      name: 'Performance Benchmark',
+      description: 'Load testing for API endpoints under high traffic conditions',
+      image: 'rust',
+      commands: ['fn main() { println!("Rust test"); }'],
+      createdAt: new Date().toISOString(),
+    },
+  ]);
+  const [testRuns, setTestRuns] = useState<Run[]>([
+    {
+      id: 'run-1',
+      name: 'Basic API Test Run',
+      image: 'javascript',
+      command: ['console.log("Hello, world!");'],
+      status: 'completed',
+      createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+      definitionId: '1',
+      duration: 1250,
+    },
+    {
+      id: 'run-2',
+      name: 'Database Connection Test Run',
+      image: 'python',
+      command: ['import sqlite3', 'print("Database test")'],
+      status: 'failed',
+      createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+      definitionId: '2',
+      logs: ['Database connection failed: Connection timeout'],
+    },
+    {
+      id: 'run-3',
+      name: 'Performance Benchmark Run',
+      image: 'rust',
+      command: ['fn main() { println!("Rust test"); }'],
+      status: 'running',
+      createdAt: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
+      definitionId: '3',
+    },
+  ]);
+  const [executors, setExecutors] = useState<Executor[]>([
+    {
+      id: 'exec-1',
+      name: 'Local Development',
+      image: 'local-runner',
+      description: 'Local development environment executor',
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'exec-2',
+      name: 'Kubernetes Cluster',
+      image: 'k8s-runner',
+      description: 'Kubernetes cluster executor for production workloads',
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'exec-3',
+      name: 'Docker Swarm',
+      image: 'docker-runner',
+      description: 'Docker Swarm executor for distributed testing',
+      createdAt: new Date().toISOString(),
+    },
+  ]);
+  const [testSuites, setTestSuites] = useState<Suite[]>([
+    {
+      id: 'suite-1',
+      name: 'API Test Suite',
+      description: 'Complete API testing suite including auth, CRUD, and performance tests',
+      testDefinitionIds: ['1', '2'],
+      createdAt: new Date().toISOString(),
+      executionMode: 'sequential',
+    },
+    {
+      id: 'suite-2',
+      name: 'End-to-End Tests',
+      description: 'Full application workflow testing',
+      testDefinitionIds: ['1', '2', '3'],
+      createdAt: new Date().toISOString(),
+      executionMode: 'parallel',
+    },
+  ]);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const { toast } = useToast();
-
-  // Load sample data
-  useEffect(() => {
-    // Sample test definitions
-    setTestDefinitions([
-      {
-        id: '1',
-        name: 'Basic API Test',
-        description: 'Tests the basic API endpoints for user authentication and data retrieval',
-        image: 'javascript',
-        commands: ['console.log("Hello, world!");'],
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: '2',
-        name: 'Database Connection Test',
-        description: 'Tests database connectivity and basic CRUD operations',
-        image: 'python',
-        commands: ['import sqlite3', 'print("Database test")'],
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: '3',
-        name: 'Performance Benchmark',
-        description: 'Load testing for API endpoints under high traffic conditions',
-        image: 'rust',
-        commands: ['fn main() { println!("Rust test"); }'],
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-
-    // Sample test runs
-    setTestRuns([
-      {
-        id: 'run-1',
-        name: 'Basic API Test Run',
-        image: 'javascript',
-        command: ['console.log("Hello, world!");'],
-        status: 'completed',
-        createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-        definitionId: '1',
-        duration: 1250,
-      },
-      {
-        id: 'run-2',
-        name: 'Database Connection Test Run',
-        image: 'python',
-        command: ['import sqlite3', 'print("Database test")'],
-        status: 'failed',
-        createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-        definitionId: '2',
-        logs: ['Database connection failed: Connection timeout'],
-      },
-      {
-        id: 'run-3',
-        name: 'Performance Benchmark Run',
-        image: 'rust',
-        command: ['fn main() { println!("Rust test"); }'],
-        status: 'running',
-        createdAt: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-        definitionId: '3',
-      },
-    ]);
-
-    // Sample executors
-    setExecutors([
-      {
-        id: 'exec-1',
-        name: 'Local Development',
-        image: 'local-runner',
-        description: 'Local development environment executor',
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 'exec-2',
-        name: 'Kubernetes Cluster',
-        image: 'k8s-runner',
-        description: 'Kubernetes cluster executor for production workloads',
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 'exec-3',
-        name: 'Docker Swarm',
-        image: 'docker-runner',
-        description: 'Docker Swarm executor for distributed testing',
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-
-    // Sample test suites
-    setTestSuites([
-      {
-        id: 'suite-1',
-        name: 'API Test Suite',
-        description: 'Complete API testing suite including auth, CRUD, and performance tests',
-        testDefinitionIds: ['1', '2'],
-        createdAt: new Date().toISOString(),
-        executionMode: 'sequential',
-      },
-      {
-        id: 'suite-2',
-        name: 'End-to-End Tests',
-        description: 'Full application workflow testing',
-        testDefinitionIds: ['1', '2', '3'],
-        createdAt: new Date().toISOString(),
-        executionMode: 'parallel',
-      },
-    ]);
-  }, []);
 
   const handleCreateTest = (testData: Omit<Definition, 'id' | 'createdAt'>) => {
     const newTest: Definition = {
