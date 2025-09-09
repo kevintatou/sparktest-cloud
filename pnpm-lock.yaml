@@ -53,9 +53,6 @@ importers:
       '@tatou/core':
         specifier: workspace:*
         version: link:../../../packages/core
-      '@tatou/storage-service':
-        specifier: 1.2.2
-        version: 1.2.2(react@18.3.1)(typescript@5.9.2)
       '@tatou/ui':
         specifier: workspace:*
         version: link:../../../packages/ui
@@ -976,16 +973,6 @@ packages:
 
   '@swc/helpers@0.5.5':
     resolution: {integrity: sha512-KGYxvIOXcceOAbEk4bi/dVLEK9z8sZ0uBB3Il5b1rhfClSpcX0yfRO0KmTkqR2cnQDymwLB+25ZyMzICg/cm/A==}
-
-  '@tatou/core@1.2.2':
-    resolution: {integrity: sha512-sXo/V2ipxGagE5lPy0h3GZCdwXqlfYXmt8yfv1sEH+wNA/ixsgulCSEt3cE1damoJzHcSmTGj8RgF4/H6s3aEw==}
-    peerDependencies:
-      typescript: ^5
-
-  '@tatou/storage-service@1.2.2':
-    resolution: {integrity: sha512-U0QbeHD1+aIqiU7iRMDTgTvTj/BAEHhAkpycBJumv57LKwXBi3J0oKWU9zJT8w2BMfNYXGa6H4A7ecNGoBZJcw==}
-    peerDependencies:
-      typescript: ^5
 
   '@tybys/wasm-util@0.10.0':
     resolution: {integrity: sha512-VyyPYFlOMNylG45GoAe0xDoLwWuowvf92F9kySqzYh8vmYm7D2u4iUJKa1tOUpS70Ku13ASrOkS4ScXFsTaCNQ==}
@@ -3487,20 +3474,6 @@ snapshots:
     dependencies:
       '@swc/counter': 0.1.3
       tslib: 2.8.1
-
-  '@tatou/core@1.2.2(react@18.3.1)(typescript@5.9.2)':
-    dependencies:
-      lucide-react: 0.454.0(react@18.3.1)
-      typescript: 5.9.2
-    transitivePeerDependencies:
-      - react
-
-  '@tatou/storage-service@1.2.2(react@18.3.1)(typescript@5.9.2)':
-    dependencies:
-      '@tatou/core': 1.2.2(react@18.3.1)(typescript@5.9.2)
-      typescript: 5.9.2
-    transitivePeerDependencies:
-      - react
 
   '@tybys/wasm-util@0.10.0':
     dependencies:

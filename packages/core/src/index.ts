@@ -19,14 +19,7 @@ export interface TestRun {
   updated_at: string;
 }
 
-export interface TestSuite {
-  id: string;
-  name: string;
-  description?: string;
-  test_definitions: string[];
-  created_at: string;
-  updated_at: string;
-}
+
 
 // Frontend-compatible interfaces
 export interface Definition {
