@@ -20,6 +20,7 @@
     "@radix-ui/react-tabs": "^1.0.4",
     "@radix-ui/react-toast": "^1.1.5",
     "@tatou/core": "workspace:*",
+    "@tatou/storage-service": "1.2.2",
     "@tatou/ui": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

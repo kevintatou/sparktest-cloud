@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Definition, Run, Executor, Suite } from '@tatou/core';
+import { useState } from 'react';
+import { Definition } from '@tatou/core';
 import { TestDefinitionCard, TestRunCard, ExecutorCard, TestSuiteCard } from '@tatou/ui';
 import { CreateTestDialog } from '@/components/create-test-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/hooks/use-toast';
+import { useStorage } from '@/hooks/use-storage';
 import { 
   Plus, Play, Settings, Database, LayoutDashboard, FileText, Server, Layers,
   Users, Building2, BarChart3, Bell, Plug, CreditCard, Folder,
@@ -25,160 +26,80 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<NavigationKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [testDefinitions, setTestDefinitions] = useState<Definition[]>([
-    {
-      id: '1',
-      name: 'Basic API Test',
-      description: 'Tests the basic API endpoints for user authentication and data retrieval',
-      image: 'javascript',
-      commands: ['console.log("Hello, world!");'],
-      createdAt: '2025-09-09T00:00:00.000Z',
-    },
-    {
-      id: '2',
-      name: 'Database Connection Test',
-      description: 'Tests database connectivity and basic CRUD operations',
-      image: 'python',
-      commands: ['import sqlite3', 'print("Database test")'],
-      createdAt: '2025-09-09T00:00:00.000Z',
-    },
-    {
-      id: '3',
-      name: 'Performance Benchmark',
-      description: 'Load testing for API endpoints under high traffic conditions',
-      image: 'rust',
-      commands: ['fn main() { println!("Rust test"); }'],
-      createdAt: '2025-09-09T00:00:00.000Z',
-    },
-  ]);
-  const [testRuns, setTestRuns] = useState<Run[]>([
-    {
-      id: 'run-1',
-      name: 'Basic API Test Run',
-      image: 'javascript',
-      command: ['console.log("Hello, world!");'],
-      status: 'completed',
-      createdAt: '2025-09-09T12:10:00.000Z',
-      definitionId: '1',
-      duration: 1250,
-    },
-    {
-      id: 'run-2',
-      name: 'Database Connection Test Run',
-      image: 'python',
-      command: ['import sqlite3', 'print("Database test")'],
-      status: 'failed',
-      createdAt: '2025-09-09T12:00:00.000Z',
-      definitionId: '2',
-      logs: ['Database connection failed: Connection timeout'],
-    },
-    {
-      id: 'run-3',
-      name: 'Performance Benchmark Run',
-      image: 'rust',
-      command: ['fn main() { println!("Rust test"); }'],
-      status: 'running',
-      createdAt: '2025-09-09T12:15:00.000Z',
-      definitionId: '3',
-    },
-  ]);
-  const [executors, setExecutors] = useState<Executor[]>([
-    {
-      id: 'exec-1',
-      name: 'Local Development',
-      image: 'local-runner',
-      description: 'Local development environment executor',
-      createdAt: '2025-09-09T00:00:00.000Z',
-    },
-    {
-      id: 'exec-2',
-      name: 'Kubernetes Cluster',
-      image: 'k8s-runner',
-      description: 'Kubernetes cluster executor for production workloads',
-      createdAt: '2025-09-09T00:00:00.000Z',
-    },
-    {
-      id: 'exec-3',
-      name: 'Docker Swarm',
-      image: 'docker-runner',
-      description: 'Docker Swarm executor for distributed testing',
-      createdAt: '2025-09-09T00:00:00.000Z',
-    },
-  ]);
-  const [testSuites, setTestSuites] = useState<Suite[]>([
-    {
-      id: 'suite-1',
-      name: 'API Test Suite',
-      description: 'Complete API testing suite including auth, CRUD, and performance tests',
-      testDefinitionIds: ['1', '2'],
-      createdAt: '2025-09-09T00:00:00.000Z',
-      executionMode: 'sequential',
-    },
-    {
-      id: 'suite-2',
-      name: 'End-to-End Tests',
-      description: 'Full application workflow testing',
-      testDefinitionIds: ['1', '2', '3'],
-      createdAt: '2025-09-09T00:00:00.000Z',
-      executionMode: 'parallel',
-    },
-  ]);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const { toast } = useToast();
+  
+  // Use storage service instead of local state
+  const {
+    definitions: testDefinitions,
+    runs: testRuns,
+    executors,
+    suites: testSuites,
+    loading,
+    createDefinition,
+    runTest,
+    deleteDefinition,
+    deleteRun,
+    deleteExecutor,
+    deleteSuite,
+  } = useStorage();
 
-  const handleCreateTest = (testData: Omit<Definition, 'id' | 'createdAt'>) => {
-    const newTest: Definition = {
-      ...testData,
-      id: `test-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-    };
-    setTestDefinitions([...testDefinitions, newTest]);
-    toast({
-      title: "Test Created",
-      description: `"${newTest.name}" has been created successfully.`,
-    });
-  };
-
-  const handleRunTest = (definitionId: string) => {
-    const definition = testDefinitions.find(d => d.id === definitionId);
-    const newRun: Run = {
-      id: `run-${Date.now()}`,
-      name: `${definition?.name} Run`,
-      image: definition?.image || 'default',
-      command: definition?.commands || ['echo "test"'],
-      status: 'running',
-      createdAt: new Date().toISOString(),
-      definitionId: definitionId,
-    };
-    setTestRuns([newRun, ...testRuns]);
-
-    toast({
-      title: "Test Started",
-      description: `Running "${definition?.name}"...`,
-    });
-
-    // Simulate running
-    setTimeout(() => {
-      setTestRuns(prev => prev.map(run => 
-        run.id === newRun.id 
-          ? { ...run, status: 'completed' as const, duration: Math.floor(Math.random() * 3000) + 500 }
-          : run
-      ));
+  const handleCreateTest = async (testData: Omit<Definition, 'id' | 'createdAt'>) => {
+    try {
+      const newTest = await createDefinition(testData);
       toast({
-        title: "Test Completed",
-        description: `"${definition?.name}" completed successfully.`,
+        title: "Test Created",
+        description: `"${newTest.name}" has been created successfully.`,
       });
-    }, 4000);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create test definition.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDeleteTest = (id: string) => {
-    const definition = testDefinitions.find(d => d.id === id);
-    setTestDefinitions(testDefinitions.filter(t => t.id !== id));
-    toast({
-      title: "Test Deleted",
-      description: `"${definition?.name}" has been deleted.`,
-      variant: "destructive",
-    });
+  const handleRunTest = async (definitionId: string) => {
+    try {
+      const definition = testDefinitions.find(d => d.id === definitionId);
+      if (!definition) {
+        throw new Error('Test definition not found');
+      }
+
+      await runTest(definitionId);
+      
+      toast({
+        title: "Test Started",
+        description: `Running "${definition.name}"...`,
+      });
+
+      // The storage service will handle status updates via subscriptions
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to start test run.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteTest = async (id: string) => {
+    try {
+      const definition = testDefinitions.find(d => d.id === id);
+      await deleteDefinition(id);
+      toast({
+        title: "Test Deleted",
+        description: `"${definition?.name}" has been deleted.`,
+        variant: "destructive",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete test definition.",
+        variant: "destructive",
+      });
+    }
   };
 
   const navigationGroups = [
@@ -219,7 +140,43 @@ export default function Home() {
     }
   ];
 
-  const renderDashboard = () => (
+  const renderDashboard = () => {
+    if (loading) {
+      return (
+        <div className="space-y-8">
+          <div className="space-y-4">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">
+                Welcome back
+              </h1>
+              <p className="text-muted-foreground">
+                Loading your test data...
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {[...Array(4)].map((_, i) => (
+              <Card key={i} className="border-l-4 border-l-gray-300">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Loading...</CardTitle>
+                  <div className="p-2 bg-gray-50 rounded-md animate-pulse">
+                    <div className="h-4 w-4 bg-gray-300 rounded" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">--</div>
+                  <p className="text-xs text-muted-foreground">
+                    Please wait...
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    return (
     <div className="space-y-8">
       {/* Hero Section */}
       <div className="space-y-4">
@@ -376,7 +333,8 @@ export default function Home() {
         </Card>
       </div>
     </div>
-  );
+    );
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -474,16 +432,27 @@ export default function Home() {
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {executors.map(executor => (
-                <Card key={executor.id}>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold">{executor.name}</h3>
-                    <p className="text-sm text-muted-foreground">{executor.description}</p>
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      Image: {executor.image}
-                    </div>
-                  </CardContent>
-                </Card>
+                <ExecutorCard 
+                  key={executor.id} 
+                  executor={executor}
+                  onDelete={deleteExecutor}
+                />
               ))}
+              {executors.length === 0 && (
+                <div className="col-span-full">
+                  <Card>
+                    <CardContent className="text-center py-12">
+                      <Server className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                      <h3 className="text-lg font-semibold mb-2">No executors yet</h3>
+                      <p className="text-muted-foreground mb-4">Add execution environments to run your tests</p>
+                      <Button className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        Add Your First Executor
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -505,8 +474,27 @@ export default function Home() {
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {testSuites.map(suite => (
-                <TestSuiteCard key={suite.id} suite={suite} />
+                <TestSuiteCard 
+                  key={suite.id} 
+                  suite={suite}
+                  onDelete={deleteSuite}
+                />
               ))}
+              {testSuites.length === 0 && (
+                <div className="col-span-full">
+                  <Card>
+                    <CardContent className="text-center py-12">
+                      <Layers className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                      <h3 className="text-lg font-semibold mb-2">No test suites yet</h3>
+                      <p className="text-muted-foreground mb-4">Create suites to organize related tests</p>
+                      <Button className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        Create Your First Suite
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -992,8 +980,8 @@ export default function Home() {
               </nav>
             </div>
 
-            {/* Sidebar Footer with Collapse Toggle */}
-            <div className={cn("p-4 border-t", sidebarCollapsed && "px-2")}>
+            {/* Sidebar Footer with Collapse Toggle - Always Visible */}
+            <div className={cn("p-4 border-t bg-muted/30", sidebarCollapsed && "px-2")}>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1005,7 +993,7 @@ export default function Home() {
                   }
                 }}
                 className={cn(
-                  "w-full justify-start group",
+                  "w-full justify-start group hover:bg-accent/50 border border-transparent hover:border-border",
                   sidebarCollapsed && "justify-center px-0"
                 )}
                 title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -1014,7 +1002,7 @@ export default function Home() {
                   "h-4 w-4 transition-transform duration-200",
                   !sidebarCollapsed && "rotate-180"
                 )} />
-                {!sidebarCollapsed && <span className="ml-2 text-xs">Collapse</span>}
+                {!sidebarCollapsed && <span className="ml-2 text-xs font-medium">Collapse</span>}
               </Button>
             </div>
           </div>
