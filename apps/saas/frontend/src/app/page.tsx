@@ -32,7 +32,7 @@ export default function Home() {
       description: 'Tests the basic API endpoints for user authentication and data retrieval',
       image: 'javascript',
       commands: ['console.log("Hello, world!");'],
-      createdAt: new Date().toISOString(),
+      createdAt: '2025-09-09T00:00:00.000Z',
     },
     {
       id: '2',
@@ -40,7 +40,7 @@ export default function Home() {
       description: 'Tests database connectivity and basic CRUD operations',
       image: 'python',
       commands: ['import sqlite3', 'print("Database test")'],
-      createdAt: new Date().toISOString(),
+      createdAt: '2025-09-09T00:00:00.000Z',
     },
     {
       id: '3',
@@ -48,7 +48,7 @@ export default function Home() {
       description: 'Load testing for API endpoints under high traffic conditions',
       image: 'rust',
       commands: ['fn main() { println!("Rust test"); }'],
-      createdAt: new Date().toISOString(),
+      createdAt: '2025-09-09T00:00:00.000Z',
     },
   ]);
   const [testRuns, setTestRuns] = useState<Run[]>([
@@ -58,7 +58,7 @@ export default function Home() {
       image: 'javascript',
       command: ['console.log("Hello, world!");'],
       status: 'completed',
-      createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+      createdAt: '2025-09-09T12:10:00.000Z',
       definitionId: '1',
       duration: 1250,
     },
@@ -68,7 +68,7 @@ export default function Home() {
       image: 'python',
       command: ['import sqlite3', 'print("Database test")'],
       status: 'failed',
-      createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+      createdAt: '2025-09-09T12:00:00.000Z',
       definitionId: '2',
       logs: ['Database connection failed: Connection timeout'],
     },
@@ -78,7 +78,7 @@ export default function Home() {
       image: 'rust',
       command: ['fn main() { println!("Rust test"); }'],
       status: 'running',
-      createdAt: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
+      createdAt: '2025-09-09T12:15:00.000Z',
       definitionId: '3',
     },
   ]);
@@ -88,21 +88,21 @@ export default function Home() {
       name: 'Local Development',
       image: 'local-runner',
       description: 'Local development environment executor',
-      createdAt: new Date().toISOString(),
+      createdAt: '2025-09-09T00:00:00.000Z',
     },
     {
       id: 'exec-2',
       name: 'Kubernetes Cluster',
       image: 'k8s-runner',
       description: 'Kubernetes cluster executor for production workloads',
-      createdAt: new Date().toISOString(),
+      createdAt: '2025-09-09T00:00:00.000Z',
     },
     {
       id: 'exec-3',
       name: 'Docker Swarm',
       image: 'docker-runner',
       description: 'Docker Swarm executor for distributed testing',
-      createdAt: new Date().toISOString(),
+      createdAt: '2025-09-09T00:00:00.000Z',
     },
   ]);
   const [testSuites, setTestSuites] = useState<Suite[]>([
@@ -111,7 +111,7 @@ export default function Home() {
       name: 'API Test Suite',
       description: 'Complete API testing suite including auth, CRUD, and performance tests',
       testDefinitionIds: ['1', '2'],
-      createdAt: new Date().toISOString(),
+      createdAt: '2025-09-09T00:00:00.000Z',
       executionMode: 'sequential',
     },
     {
@@ -119,7 +119,7 @@ export default function Home() {
       name: 'End-to-End Tests',
       description: 'Full application workflow testing',
       testDefinitionIds: ['1', '2', '3'],
-      createdAt: new Date().toISOString(),
+      createdAt: '2025-09-09T00:00:00.000Z',
       executionMode: 'parallel',
     },
   ]);
