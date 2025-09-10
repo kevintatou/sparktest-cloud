@@ -80,7 +80,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             className="gap-2"
           >
             <Plus className="h-4 w-4" />
-            Create New Test
+            Create New Definition
           </Button>
           <div className="flex items-center space-x-2 text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-md">
             <div className="h-2 w-2 bg-green-500 rounded-full"></div>
@@ -93,7 +93,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Tests</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Definitions</CardTitle>
             <div className="p-2 bg-blue-50 rounded-md">
               <FileText className="h-4 w-4 text-blue-600" />
             </div>
@@ -138,7 +138,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         
         <Card className="border-l-4 border-l-orange-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Test Suites</CardTitle>
+            <CardTitle className="text-sm font-medium">Suites</CardTitle>
             <div className="p-2 bg-orange-50 rounded-md">
               <Layers className="h-4 w-4 text-orange-600" />
             </div>
@@ -160,7 +160,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="p-1.5 bg-green-100 rounded-md">
                 <Play className="h-4 w-4 text-green-600" />
               </div>
-              Recent Test Runs
+              Recent Runs
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
@@ -172,8 +172,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="p-2 bg-muted/30 rounded-md w-fit mx-auto mb-3">
                   <Play className="h-5 w-5 opacity-50" />
                 </div>
-                <p className="text-sm">No test runs yet</p>
-                <p className="text-xs">Create and run your first test to get started</p>
+                <p className="text-sm">No runs yet</p>
+                <p className="text-xs">Create and run your first definition to get started</p>
               </div>
             )}
           </CardContent>
@@ -201,7 +201,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="p-2 bg-muted/30 rounded-md w-fit mx-auto mb-3">
                   <FileText className="h-5 w-5 opacity-50" />
                 </div>
-                <p className="text-sm">No test definitions yet</p>
+                <p className="text-sm">No definitions yet</p>
                 <Button
                   onClick={() => setShowCreateDialog(true)}
                   variant="outline"
@@ -209,7 +209,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   className="mt-3"
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Create Your First Test
+                  Create Your First Definition
                 </Button>
               </div>
             )}

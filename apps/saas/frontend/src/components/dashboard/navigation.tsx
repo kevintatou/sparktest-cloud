@@ -26,10 +26,10 @@ const navigationGroups = [
     title: 'Testing',
     items: [
       { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { key: 'definitions', label: 'Test Definitions', icon: FileText },
-      { key: 'runs', label: 'Test Runs', icon: Play },
+      { key: 'definitions', label: 'Definitions', icon: FileText },
+      { key: 'runs', label: 'Runs', icon: Play },
       { key: 'executors', label: 'Executors', icon: Server },
-      { key: 'suites', label: 'Test Suites', icon: Layers },
+      { key: 'suites', label: 'Suites', icon: Layers },
     ]
   },
   {

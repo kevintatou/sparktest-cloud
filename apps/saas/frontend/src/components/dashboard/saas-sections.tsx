@@ -138,7 +138,7 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab }) => {
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span>Test Runs</span>
+                    <span>Runs</span>
                     <span className="font-medium">1,245 / ∞</span>
                   </div>
                   <div className="flex items-center justify-between">

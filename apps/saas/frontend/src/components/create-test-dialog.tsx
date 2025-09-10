@@ -35,7 +35,7 @@ export function CreateTestDialog({
   const [formData, setFormData] = useState({
     name: initialValues?.name || '',
     description: initialValues?.description || '',
-    commands: initialValues?.commands?.[0] || '// Write your test code here\nconsole.log("Hello, World!");',
+    commands: initialValues?.commands?.[0] || '// Write your code here\nconsole.log("Hello, World!");',
     image: initialValues?.image || 'javascript',
     // Advanced settings
     timeout: '30',
@@ -51,11 +51,11 @@ export function CreateTestDialog({
     const newErrors: Record<string, string> = {};
     
     if (!formData.name.trim()) {
-      newErrors.name = 'Test name is required';
+      newErrors.name = 'Definition name is required';
     }
     
     if (!formData.commands.trim()) {
-      newErrors.commands = 'Test commands are required';
+      newErrors.commands = 'Commands are required';
     }
     
     setErrors(newErrors);
@@ -96,7 +96,7 @@ export function CreateTestDialog({
     setFormData({
       name: '',
       description: '',
-      commands: '// Write your test code here\nconsole.log("Hello, World!");',
+      commands: '// Write your code here\nconsole.log("Hello, World!");',
       image: 'javascript',
       timeout: '30',
       maxRetries: '3',
@@ -112,9 +112,9 @@ export function CreateTestDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create New Test</DialogTitle>
+          <DialogTitle>Create New Definition</DialogTitle>
           <DialogDescription>
-            Create a new test definition. Fill in the basic information and optionally configure advanced settings.
+            Create a new definition. Fill in the basic information and optionally configure advanced settings.
           </DialogDescription>
         </DialogHeader>
         
@@ -122,12 +122,12 @@ export function CreateTestDialog({
           {/* Basic Information */}
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Test Name *</Label>
+              <Label htmlFor="name">Definition Name *</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Enter test name..."
+                placeholder="Enter definition name..."
                 className={errors.name ? 'border-destructive' : ''}
               />
               {errors.name && (

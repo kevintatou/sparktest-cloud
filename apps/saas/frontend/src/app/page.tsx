@@ -36,33 +36,33 @@ export default function Home() {
     deleteSuite,
   } = useStorage();
 
-  const handleCreateTest = async (testData: Omit<Definition, 'id' | 'createdAt'>) => {
+  const handleCreateDefinition = async (testData: Omit<Definition, 'id' | 'createdAt'>) => {
     try {
-      const newTest = await createDefinition(testData);
+      const newDefinition = await createDefinition(testData);
       toast({
-        title: "Test Created",
-        description: `"${newTest.name}" has been created successfully.`,
+        title: "Definition Created",
+        description: `"${newDefinition.name}" has been created successfully.`,
       });
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to create test definition.",
+        description: "Failed to create definition.",
         variant: "destructive",
       });
     }
   };
 
-  const handleRunTest = async (definitionId: string) => {
+  const handleRunDefinition = async (definitionId: string) => {
     try {
       const definition = testDefinitions.find(d => d.id === definitionId);
       if (!definition) {
-        throw new Error('Test definition not found');
+        throw new Error('Definition not found');
       }
 
       await runTest(definitionId);
       
       toast({
-        title: "Test Started",
+        title: "Run Started",
         description: `Running "${definition.name}"...`,
       });
 
@@ -70,25 +70,25 @@ export default function Home() {
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to start test run.",
+        description: "Failed to start run.",
         variant: "destructive",
       });
     }
   };
 
-  const handleDeleteTest = async (id: string) => {
+  const handleDeleteDefinition = async (id: string) => {
     try {
       const definition = testDefinitions.find(d => d.id === id);
       await deleteDefinition(id);
       toast({
-        title: "Test Deleted",
+        title: "Definition Deleted",
         description: `"${definition?.name}" has been deleted.`,
         variant: "destructive",
       });
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to delete test definition.",
+        description: "Failed to delete definition.",
         variant: "destructive",
       });
     }
@@ -104,7 +104,7 @@ export default function Home() {
           testSuites={testSuites}
           loading={loading}
           setShowCreateDialog={setShowCreateDialog}
-          handleRunTest={handleRunTest}
+          handleRunTest={handleRunDefinition}
         />
       );
     }
@@ -119,8 +119,8 @@ export default function Home() {
           testSuites={testSuites}
           setShowCreateDialog={setShowCreateDialog}
           setActiveTab={setActiveTab}
-          handleRunTest={handleRunTest}
-          handleDeleteTest={handleDeleteTest}
+          handleRunTest={handleRunDefinition}
+          handleDeleteTest={handleDeleteDefinition}
           deleteExecutor={deleteExecutor}
           deleteSuite={deleteSuite}
         />
@@ -161,7 +161,7 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="flex">
+      <div className="flex h-[calc(100vh-73px)]">
         {/* Sidebar with Simple Styling */}
         <aside className={cn(
           "fixed inset-y-0 left-0 z-50 bg-background border-r transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
@@ -189,7 +189,7 @@ export default function Home() {
 
         {/* Main Content with Dynamic Margin */}
         <main className={cn(
-          "flex-1 transition-all duration-300 ease-in-out lg:ml-0",
+          "flex-1 transition-all duration-300 ease-in-out lg:ml-0 overflow-y-auto",
           sidebarCollapsed ? "lg:ml-16" : "lg:ml-0"
         )}>
           <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -198,11 +198,11 @@ export default function Home() {
         </main>
       </div>
 
-      {/* Create Test Dialog */}
+      {/* Create Definition Dialog */}
       <CreateTestDialog
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
-        onCreateTest={handleCreateTest}
+        onCreateTest={handleCreateDefinition}
       />
     </div>
   );
