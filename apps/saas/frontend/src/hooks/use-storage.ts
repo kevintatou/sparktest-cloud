@@ -2,143 +2,127 @@
 
 import { useState, useEffect } from 'react';
 import { Definition, Run, Executor, Suite } from '@tatou/core';
+import { useOrganization } from '@/hooks/use-organization';
 
 export function useStorage() {
+  const { currentOrg } = useOrganization();
   const [definitions, setDefinitions] = useState<Definition[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [executors, setExecutors] = useState<Executor[]>([]);
   const [suites, setSuites] = useState<Suite[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Initialize with sample data
+  // Load data when org changes
   useEffect(() => {
-    const initializeData = async () => {
+    if (!currentOrg) {
+      setLoading(true);
+      return;
+    }
+
+    const loadOrgData = async () => {
+      setLoading(true);
       try {
-        // Sample data for testing
-        const sampleDefinitions: Definition[] = [
-          {
-            id: 'def-1',
-            name: 'Basic API Test',
-            description: 'Tests the basic API endpoints for user authentication and data retrieval',
-            image: 'javascript',
-            commands: ['npm test'],
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: 'def-2',
-            name: 'Database Connection Test',
-            description: 'Tests database connectivity and basic CRUD operations',
-            image: 'python',
-            commands: ['python test.py'],
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: 'def-3',
-            name: 'Performance Benchmark',
-            description: 'Load testing for API endpoints under high traffic conditions',
-            image: 'rust',
-            commands: ['cargo test --release'],
-            createdAt: new Date().toISOString(),
-          },
-        ];
+        const baseUrl = `http://localhost:3001/api/orgs/${currentOrg.slug}`;
+        
+        // Load all org-specific data
+        const [defsRes, runsRes, execsRes, suitesRes] = await Promise.all([
+          fetch(`${baseUrl}/test-definitions`),
+          fetch(`${baseUrl}/test-runs`),
+          fetch(`${baseUrl}/executors`),
+          fetch(`${baseUrl}/test-suites`),
+        ]);
 
-        const sampleRuns: Run[] = [
-          {
-            id: 'run-1',
-            name: 'Run run-1',
-            image: 'javascript',
-            command: ['npm', 'test'],
-            status: 'completed',
-            createdAt: new Date(Date.now() - 3600000).toISOString(),
-            definitionId: 'def-1',
-            duration: 1250,
-          },
-          {
-            id: 'run-2',
-            name: 'Run run-2',
-            image: 'python',
-            command: ['python', 'test.py'],
-            status: 'failed',
-            createdAt: new Date(Date.now() - 7200000).toISOString(),
-            definitionId: 'def-2',
-            logs: ['Database connection failed: Connection timeout'],
-          },
-          {
-            id: 'run-3',
-            name: 'Run run-3',
-            image: 'rust',
-            command: ['cargo', 'test'],
-            status: 'running',
-            createdAt: new Date(Date.now() - 300000).toISOString(),
-            definitionId: 'def-3',
-          },
-        ];
+        if (defsRes.ok) {
+          const defs = await defsRes.json();
+          // Transform backend data to frontend format
+          setDefinitions(defs.map((def: any) => ({
+            id: def.id,
+            name: def.name,
+            description: def.description || '',
+            image: def.language,
+            commands: [def.code],
+            createdAt: def.created_at,
+          })));
+        }
 
-        const sampleExecutors: Executor[] = [
-          {
-            id: 'exec-1',
-            name: 'Local Docker',
-            image: 'local-runner',
-            description: 'Local Docker executor for development testing',
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: 'exec-2',
-            name: 'Kubernetes Cluster',
-            image: 'k8s-runner',
-            description: 'Production Kubernetes cluster executor',
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: 'exec-3',
-            name: 'Cloud Runner',
-            image: 'docker-runner',
-            description: 'Cloud-based Docker execution environment',
-            createdAt: new Date().toISOString(),
-          },
-        ];
+        if (runsRes.ok) {
+          const runs = await runsRes.json();
+          setRuns(runs.map((run: any) => ({
+            id: run.id,
+            name: `Run ${run.id.slice(-8)}`,
+            image: 'test-runner',
+            command: ['run'],
+            status: run.status,
+            createdAt: run.created_at,
+            definitionId: run.definition_id,
+          })));
+        }
 
-        const sampleSuites: Suite[] = [
-          {
-            id: 'suite-1',
-            name: 'API Test Suite',
-            description: 'Complete API testing suite covering all endpoints',
-            testDefinitionIds: ['def-1', 'def-2'],
-            createdAt: new Date().toISOString(),
-            executionMode: 'parallel',
-          },
-          {
-            id: 'suite-2',
-            name: 'Performance Suite',
-            description: 'Performance and load testing suite',
-            testDefinitionIds: ['def-3'],
-            createdAt: new Date().toISOString(),
-            executionMode: 'sequential',
-          },
-        ];
+        if (execsRes.ok) {
+          const execs = await execsRes.json();
+          setExecutors(execs.map((exec: any) => ({
+            id: exec.id,
+            name: exec.name,
+            image: exec.executor_type,
+            description: `${exec.executor_type} executor`,
+            createdAt: exec.created_at,
+          })));
+        }
 
-        setDefinitions(sampleDefinitions);
-        setRuns(sampleRuns);
-        setExecutors(sampleExecutors);
-        setSuites(sampleSuites);
+        if (suitesRes.ok) {
+          const suites = await suitesRes.json();
+          setSuites(suites.map((suite: any) => ({
+            id: suite.id,
+            name: suite.name,
+            description: suite.description || '',
+            testDefinitionIds: suite.test_definitions || [],
+            createdAt: suite.created_at,
+            executionMode: 'parallel' as const,
+          })));
+        }
       } catch (error) {
-        console.error('Failed to initialize data:', error);
+        console.error('Failed to load org data:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    initializeData();
-  }, []);
+    loadOrgData();
+  }, [currentOrg]);
 
   const createDefinition = async (testData: Omit<Definition, 'id' | 'createdAt'>) => {
-    const newDefinition: Definition = {
-      ...testData,
-      id: `def-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-    };
-    setDefinitions(prev => [newDefinition, ...prev]);
-    return newDefinition;
+    if (!currentOrg) throw new Error('No org selected');
+    
+    try {
+      const response = await fetch(`http://localhost:3001/api/orgs/${currentOrg.slug}/test-definitions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: testData.name,
+          description: testData.description,
+          code: testData.commands.join('\n'),
+          language: testData.image,
+          is_public: false,
+        }),
+      });
+      
+      if (response.ok) {
+        const def = await response.json();
+        const newDefinition: Definition = {
+          id: def.id,
+          name: def.name,
+          description: def.description || '',
+          image: def.language,
+          commands: [def.code],
+          createdAt: def.created_at,
+        };
+        setDefinitions(prev => [newDefinition, ...prev]);
+        return newDefinition;
+      }
+    } catch (error) {
+      console.error('Failed to create definition:', error);
+    }
+    throw new Error('Failed to create definition');
   };
 
   const updateDefinition = async (id: string, updates: Partial<Omit<Definition, 'id' | 'createdAt'>>) => {
@@ -150,13 +134,36 @@ export function useStorage() {
   };
 
   const createExecutor = async (executorData: Omit<Executor, 'id' | 'createdAt'>) => {
-    const newExecutor: Executor = {
-      ...executorData,
-      id: `exec-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-    };
-    setExecutors(prev => [newExecutor, ...prev]);
-    return newExecutor;
+    if (!currentOrg) throw new Error('No org selected');
+    
+    try {
+      const response = await fetch(`http://localhost:3001/api/orgs/${currentOrg.slug}/executors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: executorData.name,
+          executor_type: executorData.image,
+          config: {},
+          status: 'active',
+        }),
+      });
+      
+      if (response.ok) {
+        const exec = await response.json();
+        const newExecutor: Executor = {
+          id: exec.id,
+          name: exec.name,
+          image: exec.executor_type,
+          description: executorData.description,
+          createdAt: exec.created_at,
+        };
+        setExecutors(prev => [newExecutor, ...prev]);
+        return newExecutor;
+      }
+    } catch (error) {
+      console.error('Failed to create executor:', error);
+    }
+    throw new Error('Failed to create executor');
   };
 
   const updateExecutor = async (id: string, updates: Partial<Omit<Executor, 'id' | 'createdAt'>>) => {
@@ -168,13 +175,36 @@ export function useStorage() {
   };
 
   const createSuite = async (suiteData: Omit<Suite, 'id' | 'createdAt'>) => {
-    const newSuite: Suite = {
-      ...suiteData,
-      id: `suite-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-    };
-    setSuites(prev => [newSuite, ...prev]);
-    return newSuite;
+    if (!currentOrg) throw new Error('No org selected');
+    
+    try {
+      const response = await fetch(`http://localhost:3001/api/orgs/${currentOrg.slug}/test-suites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: suiteData.name,
+          description: suiteData.description,
+          test_definitions: suiteData.testDefinitionIds,
+        }),
+      });
+      
+      if (response.ok) {
+        const suite = await response.json();
+        const newSuite: Suite = {
+          id: suite.id,
+          name: suite.name,
+          description: suite.description || '',
+          testDefinitionIds: suite.test_definitions || [],
+          createdAt: suite.created_at,
+          executionMode: 'parallel',
+        };
+        setSuites(prev => [newSuite, ...prev]);
+        return newSuite;
+      }
+    } catch (error) {
+      console.error('Failed to create suite:', error);
+    }
+    throw new Error('Failed to create suite');
   };
 
   const updateSuite = async (id: string, updates: Partial<Omit<Suite, 'id' | 'createdAt'>>) => {
@@ -196,31 +226,39 @@ export function useStorage() {
   };
 
   const runTest = async (definitionId: string) => {
+    if (!currentOrg) throw new Error('No org selected');
+    
     const definition = definitions.find(d => d.id === definitionId);
     if (!definition) throw new Error('Definition not found');
 
-    const newRun: Run = {
-      id: `run-${Date.now()}`,
-      name: `Run ${definition.name}`,
-      image: definition.image,
-      command: definition.commands,
-      status: 'running',
-      createdAt: new Date().toISOString(),
-      definitionId,
-    };
-
-    setRuns(prev => [newRun, ...prev]);
-
-    // Simulate run completion
-    setTimeout(() => {
-      setRuns(prev => prev.map(run => 
-        run.id === newRun.id 
-          ? { ...run, status: 'completed' as const, duration: Math.floor(Math.random() * 3000) + 500 }
-          : run
-      ));
-    }, 2000);
-
-    return newRun;
+    try {
+      const response = await fetch(`http://localhost:3001/api/orgs/${currentOrg.slug}/test-runs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          definition_id: definitionId,
+          status: 'queued',
+        }),
+      });
+      
+      if (response.ok) {
+        const run = await response.json();
+        const newRun: Run = {
+          id: run.id,
+          name: `Run ${run.id.slice(-8)}`,
+          image: 'test-runner',
+          command: ['run'],
+          status: run.status,
+          createdAt: run.created_at,
+          definitionId: run.definition_id,
+        };
+        setRuns(prev => [newRun, ...prev]);
+        return newRun;
+      }
+    } catch (error) {
+      console.error('Failed to run test:', error);
+    }
+    throw new Error('Failed to run test');
   };
 
   const deleteDefinition = async (id: string) => {

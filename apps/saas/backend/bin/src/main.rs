@@ -15,6 +15,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Use in-memory database for now (placeholder implementation)
     let database = Database::new("placeholder").await?;
+    
+    // Seed sample data for development
+    database.seed_sample_data().await?;
+    info!("Seeded sample data");
 
     let app = create_app(database);
     let listener = TcpListener::bind(&addr).await?;

@@ -1,11 +1,13 @@
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{Path, State, Query},
+    http::{StatusCode, HeaderMap},
     routing::{delete, get, post, put},
     Json, Router,
+    middleware,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sparktest_saas_core::{Database, SaasTestDefinition, SaasTestRun, SaasExecutor, SaasTestSuite};
+use sparktest_saas_core::{Database, SaasTestDefinition, SaasTestRun, SaasExecutor, SaasTestSuite, Organization, OrgContext};
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
@@ -13,23 +15,28 @@ use chrono::Utc;
 
 pub type AppState = Arc<Database>;
 
+#[derive(Deserialize)]
+pub struct OrgQuery {
+    pub org: Option<String>,
+}
+
 pub fn create_app(database: Database) -> Router {
     let state = Arc::new(database);
     
     Router::new()
         .route("/api/health", get(health_check))
-        // Test Definitions
-        .route("/api/test-definitions", get(list_test_definitions).post(create_test_definition))
-        .route("/api/test-definitions/:id", get(get_test_definition).put(update_test_definition).delete(delete_test_definition))
-        // Test Runs
-        .route("/api/test-runs", get(list_test_runs).post(create_test_run))
-        .route("/api/test-runs/:id", get(get_test_run))
-        // Executors
-        .route("/api/executors", get(list_executors).post(create_executor))
-        .route("/api/executors/:id", get(get_executor).put(update_executor).delete(delete_executor))
-        // Test Suites
-        .route("/api/test-suites", get(list_test_suites).post(create_test_suite))
-        .route("/api/test-suites/:id", get(get_test_suite).put(update_test_suite).delete(delete_test_suite))
+        // Organizations
+        .route("/api/organizations", get(list_organizations))
+        .route("/api/organizations/:slug", get(get_organization_by_slug))
+        // Org-scoped routes  
+        .route("/api/orgs/:org_slug/test-definitions", get(list_test_definitions).post(create_test_definition))
+        .route("/api/orgs/:org_slug/test-definitions/:id", get(get_test_definition).put(update_test_definition).delete(delete_test_definition))
+        .route("/api/orgs/:org_slug/test-runs", get(list_test_runs).post(create_test_run))
+        .route("/api/orgs/:org_slug/test-runs/:id", get(get_test_run))
+        .route("/api/orgs/:org_slug/executors", get(list_executors).post(create_executor))
+        .route("/api/orgs/:org_slug/executors/:id", get(get_executor).put(update_executor).delete(delete_executor))
+        .route("/api/orgs/:org_slug/test-suites", get(list_test_suites).post(create_test_suite))
+        .route("/api/orgs/:org_slug/test-suites/:id", get(get_test_suite).put(update_test_suite).delete(delete_test_suite))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -38,9 +45,41 @@ async fn health_check() -> Json<Value> {
     Json(json!({ "status": "ok", "timestamp": Utc::now() }))
 }
 
+// Helper function to get org context from path
+async fn get_org_context(db: &Database, org_slug: &str) -> Result<Uuid, StatusCode> {
+    match db.get_organization_by_slug(org_slug).await {
+        Ok(Some(org)) => Ok(org.id),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+// Organization handlers
+async fn list_organizations(State(db): State<AppState>) -> Result<Json<Vec<Organization>>, StatusCode> {
+    match db.list_organizations().await {
+        Ok(orgs) => Ok(Json(orgs)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+async fn get_organization_by_slug(
+    State(db): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<Organization>, StatusCode> {
+    match db.get_organization_by_slug(&slug).await {
+        Ok(Some(org)) => Ok(Json(org)),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
 // Test Definition handlers
-async fn list_test_definitions(State(db): State<AppState>) -> Result<Json<Vec<SaasTestDefinition>>, StatusCode> {
-    match db.list_test_definitions(None, None).await {
+async fn list_test_definitions(
+    State(db): State<AppState>,
+    Path(org_slug): Path<String>,
+) -> Result<Json<Vec<SaasTestDefinition>>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    match db.list_test_definitions(org_id).await {
         Ok(definitions) => Ok(Json(definitions)),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -48,11 +87,15 @@ async fn list_test_definitions(State(db): State<AppState>) -> Result<Json<Vec<Sa
 
 async fn create_test_definition(
     State(db): State<AppState>,
+    Path(org_slug): Path<String>,
     Json(mut definition): Json<SaasTestDefinition>,
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    
     definition.id = Uuid::new_v4();
     definition.created_at = Utc::now();
     definition.updated_at = Utc::now();
+    definition.organization_id = Some(org_id);
 
     match db.create_test_definition(&definition).await {
         Ok(_) => Ok(Json(definition)),
@@ -62,9 +105,10 @@ async fn create_test_definition(
 
 async fn get_test_definition(
     State(db): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path((org_slug, id)): Path<(String, Uuid)>,
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
-    match db.get_test_definition(id).await {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    match db.get_test_definition(id, org_id).await {
         Ok(Some(definition)) => Ok(Json(definition)),
         Ok(None) => Err(StatusCode::NOT_FOUND),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
@@ -73,11 +117,13 @@ async fn get_test_definition(
 
 async fn update_test_definition(
     State(db): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path((org_slug, id)): Path<(String, Uuid)>,
     Json(mut definition): Json<SaasTestDefinition>,
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
     definition.id = id;
     definition.updated_at = Utc::now();
+    definition.organization_id = Some(org_id);
 
     // For now, just return the updated definition
     // In a real implementation, you'd update in the database
@@ -86,17 +132,22 @@ async fn update_test_definition(
 
 async fn delete_test_definition(
     State(db): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path((org_slug, id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, StatusCode> {
-    match db.delete_test_definition(id).await {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    match db.delete_test_definition(id, org_id).await {
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
 
 // Test Run handlers
-async fn list_test_runs(State(db): State<AppState>) -> Result<Json<Vec<SaasTestRun>>, StatusCode> {
-    match db.list_test_runs(None, None).await {
+async fn list_test_runs(
+    State(db): State<AppState>,
+    Path(org_slug): Path<String>,
+) -> Result<Json<Vec<SaasTestRun>>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    match db.list_test_runs(org_id).await {
         Ok(runs) => Ok(Json(runs)),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -104,11 +155,23 @@ async fn list_test_runs(State(db): State<AppState>) -> Result<Json<Vec<SaasTestR
 
 async fn create_test_run(
     State(db): State<AppState>,
+    Path(org_slug): Path<String>,
     Json(mut run): Json<SaasTestRun>,
 ) -> Result<Json<SaasTestRun>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    
+    // Check policy limits before creating run
+    match db.check_run_limits(org_id).await {
+        Ok(false) => return Err(StatusCode::TOO_MANY_REQUESTS),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+        _ => {}
+    }
+    
     run.id = Uuid::new_v4();
     run.created_at = Utc::now();
     run.updated_at = Utc::now();
+    run.organization_id = Some(org_id);
+    run.status = "queued".to_string();
 
     match db.create_test_run(&run).await {
         Ok(_) => Ok(Json(run)),
@@ -117,87 +180,135 @@ async fn create_test_run(
 }
 
 async fn get_test_run(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(json!({"message": "Test run not implemented yet"})))
+    State(db): State<AppState>,
+    Path((org_slug, id)): Path<(String, Uuid)>,
+) -> Result<Json<SaasTestRun>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    match db.get_test_run(id, org_id).await {
+        Ok(Some(run)) => Ok(Json(run)),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 // Executor handlers
-async fn list_executors(State(_db): State<AppState>) -> Result<Json<Vec<Value>>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(vec![]))
+async fn list_executors(
+    State(db): State<AppState>,
+    Path(org_slug): Path<String>,
+) -> Result<Json<Vec<SaasExecutor>>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    match db.list_executors(org_id).await {
+        Ok(executors) => Ok(Json(executors)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 async fn create_executor(
-    State(_db): State<AppState>,
-    Json(executor): Json<Value>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(executor))
+    State(db): State<AppState>,
+    Path(org_slug): Path<String>,
+    Json(mut executor): Json<SaasExecutor>,
+) -> Result<Json<SaasExecutor>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    executor.id = Uuid::new_v4();
+    executor.created_at = Utc::now();
+    executor.updated_at = Utc::now();
+    executor.organization_id = Some(org_id);
+    
+    match db.create_executor(&executor).await {
+        Ok(_) => Ok(Json(executor)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 async fn get_executor(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(json!({"message": "Executor not implemented yet"})))
+    State(db): State<AppState>,
+    Path((org_slug, id)): Path<(String, Uuid)>,
+) -> Result<Json<SaasExecutor>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    match db.get_executor(id, org_id).await {
+        Ok(Some(executor)) => Ok(Json(executor)),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 async fn update_executor(
     State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
-    Json(executor): Json<Value>,
-) -> Result<Json<Value>, StatusCode> {
+    Path((_org_slug, _id)): Path<(String, Uuid)>,
+    Json(executor): Json<SaasExecutor>,
+) -> Result<Json<SaasExecutor>, StatusCode> {
     // Placeholder implementation
     Ok(Json(executor))
 }
 
 async fn delete_executor(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
+    State(db): State<AppState>,
+    Path((org_slug, id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, StatusCode> {
-    // Placeholder implementation
-    Ok(StatusCode::NO_CONTENT)
+    let org_id = get_org_context(&db, &org_slug).await?;
+    match db.delete_executor(id, org_id).await {
+        Ok(_) => Ok(StatusCode::NO_CONTENT),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 // Test Suite handlers
-async fn list_test_suites(State(_db): State<AppState>) -> Result<Json<Vec<Value>>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(vec![]))
+async fn list_test_suites(
+    State(db): State<AppState>,
+    Path(org_slug): Path<String>,
+) -> Result<Json<Vec<SaasTestSuite>>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    match db.list_test_suites(org_id).await {
+        Ok(suites) => Ok(Json(suites)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 async fn create_test_suite(
-    State(_db): State<AppState>,
-    Json(suite): Json<Value>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(suite))
+    State(db): State<AppState>,
+    Path(org_slug): Path<String>,
+    Json(mut suite): Json<SaasTestSuite>,
+) -> Result<Json<SaasTestSuite>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    suite.id = Uuid::new_v4();
+    suite.created_at = Utc::now();
+    suite.updated_at = Utc::now();
+    suite.organization_id = Some(org_id);
+    
+    match db.create_test_suite(&suite).await {
+        Ok(_) => Ok(Json(suite)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 async fn get_test_suite(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(json!({"message": "Test suite not implemented yet"})))
+    State(db): State<AppState>,
+    Path((org_slug, id)): Path<(String, Uuid)>,
+) -> Result<Json<SaasTestSuite>, StatusCode> {
+    let org_id = get_org_context(&db, &org_slug).await?;
+    match db.get_test_suite(id, org_id).await {
+        Ok(Some(suite)) => Ok(Json(suite)),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 async fn update_test_suite(
     State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
-    Json(suite): Json<Value>,
-) -> Result<Json<Value>, StatusCode> {
+    Path((_org_slug, _id)): Path<(String, Uuid)>,
+    Json(suite): Json<SaasTestSuite>,
+) -> Result<Json<SaasTestSuite>, StatusCode> {
     // Placeholder implementation
     Ok(Json(suite))
 }
 
 async fn delete_test_suite(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
+    State(db): State<AppState>,
+    Path((org_slug, id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, StatusCode> {
-    // Placeholder implementation
-    Ok(StatusCode::NO_CONTENT)
+    let org_id = get_org_context(&db, &org_slug).await?;
+    match db.delete_test_suite(id, org_id).await {
+        Ok(_) => Ok(StatusCode::NO_CONTENT),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }

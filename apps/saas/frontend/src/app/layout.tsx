@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/toaster'
+import { OrganizationProvider } from '@/components/organization-provider'
 
 export const metadata: Metadata = {
   title: 'SparkTest SaaS',
@@ -19,8 +20,10 @@ export default function RootLayout({
         <ThemeProvider
           defaultTheme="system"
         >
-          {children}
-          <Toaster />
+          <OrganizationProvider>
+            {children}
+            <Toaster />
+          </OrganizationProvider>
         </ThemeProvider>
       </body>
     </html>

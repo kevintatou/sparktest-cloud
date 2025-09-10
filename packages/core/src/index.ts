@@ -60,6 +60,41 @@ export interface Suite {
   executionMode: 'sequential' | 'parallel';
 }
 
+// Multi-tenancy types
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrganizationMember {
+  id: string;
+  organizationId: string;
+  userId: string;
+  role: 'admin' | 'developer' | 'viewer';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  name?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrganizationPolicy {
+  id: string;
+  organizationId: string;
+  maxConcurrentRuns: number;
+  dailyCap: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export * from './storage/index.js';
 export * from './config.js';
 export * from './types.js';

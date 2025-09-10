@@ -15,6 +15,8 @@ import { Navigation, NavigationKey } from '@/components/dashboard/navigation';
 import { Dashboard } from '@/components/dashboard/dashboard';
 import { TestSections } from '@/components/dashboard/test-sections';
 import { SaasSections } from '@/components/dashboard/saas-sections';
+import { OrganizationSwitcher } from '@/components/organization-switcher';
+import { useOrganization } from '@/hooks/use-organization';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<NavigationKey>('dashboard');
@@ -24,6 +26,7 @@ export default function Home() {
   const [showCreateExecutorDialog, setShowCreateExecutorDialog] = useState(false);
   const [showCreateSuiteDialog, setShowCreateSuiteDialog] = useState(false);
   const { toast } = useToast();
+  const { currentOrg, loading: orgLoading } = useOrganization();
   
   // Use storage service instead of local state
   const {
@@ -45,6 +48,18 @@ export default function Home() {
     deleteExecutor,
     deleteSuite,
   } = useStorage();
+
+  // Show loading state if no org is selected
+  if (orgLoading || !currentOrg) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading organizations...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleCreateDefinition = async (testData: Omit<Definition, 'id' | 'createdAt'>) => {
     try {
@@ -230,6 +245,7 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <OrganizationSwitcher />
               <div className="flex items-center space-x-2 bg-muted/50 px-3 py-1.5 rounded-md border">
                 <div className="h-2 w-2 bg-green-500 rounded-full"></div>
                 <Database className="h-4 w-4" />
