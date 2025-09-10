@@ -86,6 +86,16 @@ export default function Home() {
     }
   };
 
+  const handleRunClick = (runId: string) => {
+    const run = testRuns.find(r => r.id === runId);
+    if (run) {
+      toast({
+        title: "Run Details",
+        description: `Viewing details for Run ${run.id.slice(-8)} (${run.status})`,
+      });
+    }
+  };
+
   const handleDeleteDefinition = async (id: string) => {
     try {
       const definition = testDefinitions.find(d => d.id === id);
@@ -169,6 +179,7 @@ export default function Home() {
           loading={loading}
           setShowCreateDialog={setShowCreateDialog}
           handleRunTest={handleRunDefinition}
+          handleRunClick={handleRunClick}
         />
       );
     }
@@ -188,6 +199,7 @@ export default function Home() {
           handleRunTest={handleRunDefinition}
           handleRunSuite={handleRunSuite}
           handleDeleteTest={handleDeleteDefinition}
+          handleRunClick={handleRunClick}
           deleteRun={deleteRun}
           deleteExecutor={deleteExecutor}
           deleteSuite={deleteSuite}

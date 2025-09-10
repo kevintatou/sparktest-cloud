@@ -88,11 +88,12 @@ export const TestDefinitionCard: React.FC<TestDefinitionCardProps> = ({
 
 export interface TestRunCardProps {
   run: Run;
+  onClick?: (id: string) => void;
   onDelete?: (id: string) => void;
   onRetry?: (id: string) => void;
 }
 
-export const TestRunCard: React.FC<TestRunCardProps> = ({ run, onDelete, onRetry }) => {
+export const TestRunCard: React.FC<TestRunCardProps> = ({ run, onClick, onDelete, onRetry }) => {
   const getStatusConfig = (status: string) => {
     const configs = {
       pending: {
@@ -134,7 +135,10 @@ export const TestRunCard: React.FC<TestRunCardProps> = ({ run, onDelete, onRetry
   const statusConfig = getStatusConfig(run.status);
 
   return (
-    <div className="bg-card rounded-lg border p-4 transition-all duration-200 hover:shadow-md">
+    <div 
+      className={`bg-card rounded-lg border p-4 transition-all duration-200 hover:shadow-md ${onClick ? 'cursor-pointer hover:border-primary/50' : ''}`}
+      onClick={onClick ? () => onClick(run.id) : undefined}
+    >
       <div className="flex items-center justify-between mb-3">
         <h4 className="font-semibold text-card-foreground">
           Run {run.id.slice(-8)}

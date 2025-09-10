@@ -2,7 +2,8 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TestDefinitionCard, TestRunCard } from '@tatou/ui';
+import { TestDefinitionCard } from '@tatou/ui';
+import { TestRunCard } from '@/components/ui/run-card';
 import { Definition, Run, Executor, Suite } from '@tatou/core';
 import { Plus, Play, Server, Layers, FileText } from 'lucide-react';
 
@@ -14,6 +15,7 @@ export interface DashboardProps {
   loading: boolean;
   setShowCreateDialog: (show: boolean) => void;
   handleRunTest: (id: string) => void;
+  handleRunClick: (id: string) => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -24,6 +26,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   loading,
   setShowCreateDialog,
   handleRunTest,
+  handleRunClick,
 }) => {
   if (loading) {
     return (
@@ -161,7 +164,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
             {testRuns.slice(0, 3).map(run => (
-              <TestRunCard key={run.id} run={run} />
+              <TestRunCard key={run.id} run={run} onClick={handleRunClick} />
             ))}
             {testRuns.length === 0 && (
               <div className="text-center py-6 text-muted-foreground">

@@ -2,7 +2,8 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { TestDefinitionCard, TestRunCard, ExecutorCard, TestSuiteCard } from '@tatou/ui';
+import { TestDefinitionCard, ExecutorCard, TestSuiteCard } from '@tatou/ui';
+import { TestRunCard } from '@/components/ui/run-card';
 import { Definition, Run, Executor, Suite } from '@tatou/core';
 import { Plus, FileText, Play, Server, Layers } from 'lucide-react';
 import { NavigationKey } from './navigation';
@@ -20,6 +21,7 @@ export interface TestSectionsProps {
   handleRunTest: (id: string) => void;
   handleRunSuite: (id: string) => void;
   handleDeleteTest: (id: string) => void;
+  handleRunClick: (id: string) => void;
   deleteRun: (id: string) => void;
   deleteExecutor: (id: string) => void;
   deleteSuite: (id: string) => void;
@@ -38,6 +40,7 @@ export const TestSections: React.FC<TestSectionsProps> = ({
   handleRunTest,
   handleRunSuite,
   handleDeleteTest,
+  handleRunClick,
   deleteRun,
   deleteExecutor,
   deleteSuite,
@@ -100,6 +103,7 @@ export const TestSections: React.FC<TestSectionsProps> = ({
               <TestRunCard 
                 key={run.id} 
                 run={run}
+                onClick={handleRunClick}
                 onDelete={deleteRun}
                 onRetry={(runId) => {
                   // Find the original definition for this run and run it again
