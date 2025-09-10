@@ -88,9 +88,11 @@ export const TestDefinitionCard: React.FC<TestDefinitionCardProps> = ({
 
 export interface TestRunCardProps {
   run: Run;
+  onDelete?: (id: string) => void;
+  onRetry?: (id: string) => void;
 }
 
-export const TestRunCard: React.FC<TestRunCardProps> = ({ run }) => {
+export const TestRunCard: React.FC<TestRunCardProps> = ({ run, onDelete, onRetry }) => {
   const getStatusConfig = (status: string) => {
     const configs = {
       pending: {
@@ -164,6 +166,33 @@ export const TestRunCard: React.FC<TestRunCardProps> = ({ run }) => {
           </div>
         )}
       </div>
+
+      {(onDelete || onRetry) && (
+        <div className="flex gap-2 mt-4 pt-3 border-t">
+          {onRetry && (
+            <button
+              onClick={() => onRetry(run.id)}
+              className="flex items-center gap-1 px-3 py-1.5 border border-border text-foreground font-medium rounded text-sm transition-colors hover:bg-accent"
+            >
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Retry
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={() => onDelete(run.id)}
+              className="flex items-center gap-1 px-3 py-1.5 text-destructive font-medium rounded text-sm transition-colors hover:bg-destructive/10"
+            >
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

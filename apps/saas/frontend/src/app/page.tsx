@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Definition } from '@tatou/core';
+import { Definition, Executor, Suite } from '@tatou/core';
 import { CreateTestDialog } from '@/components/create-test-dialog';
+import { CreateExecutorDialog } from '@/components/create-executor-dialog';
+import { CreateSuiteDialog } from '@/components/create-suite-dialog';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/hooks/use-toast';
 import { useStorage } from '@/hooks/use-storage';
@@ -19,6 +21,8 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showCreateExecutorDialog, setShowCreateExecutorDialog] = useState(false);
+  const [showCreateSuiteDialog, setShowCreateSuiteDialog] = useState(false);
   const { toast } = useToast();
   
   // Use storage service instead of local state
@@ -29,7 +33,13 @@ export default function Home() {
     suites: testSuites,
     loading,
     createDefinition,
+    updateDefinition,
+    createExecutor,
+    updateExecutor,
+    createSuite,
+    updateSuite,
     runTest,
+    runSuite,
     deleteDefinition,
     deleteRun,
     deleteExecutor,
@@ -94,6 +104,60 @@ export default function Home() {
     }
   };
 
+  const handleCreateExecutor = async (executorData: Omit<Executor, 'id' | 'createdAt'>) => {
+    try {
+      const newExecutor = await createExecutor(executorData);
+      toast({
+        title: "Executor Created",
+        description: `"${newExecutor.name}" has been created successfully.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create executor.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCreateSuite = async (suiteData: Omit<Suite, 'id' | 'createdAt'>) => {
+    try {
+      const newSuite = await createSuite(suiteData);
+      toast({
+        title: "Suite Created",
+        description: `"${newSuite.name}" has been created successfully.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create suite.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRunSuite = async (suiteId: string) => {
+    try {
+      const suite = testSuites.find(s => s.id === suiteId);
+      if (!suite) {
+        throw new Error('Suite not found');
+      }
+
+      await runSuite(suiteId);
+      
+      toast({
+        title: "Suite Started",
+        description: `Running suite "${suite.name}" with ${suite.testDefinitionIds.length} definitions...`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to start suite.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const renderTabContent = () => {
     if (activeTab === 'dashboard') {
       return (
@@ -118,9 +182,13 @@ export default function Home() {
           executors={executors}
           testSuites={testSuites}
           setShowCreateDialog={setShowCreateDialog}
+          setShowCreateExecutorDialog={setShowCreateExecutorDialog}
+          setShowCreateSuiteDialog={setShowCreateSuiteDialog}
           setActiveTab={setActiveTab}
           handleRunTest={handleRunDefinition}
+          handleRunSuite={handleRunSuite}
           handleDeleteTest={handleDeleteDefinition}
+          deleteRun={deleteRun}
           deleteExecutor={deleteExecutor}
           deleteSuite={deleteSuite}
         />
@@ -203,6 +271,21 @@ export default function Home() {
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
         onCreateTest={handleCreateDefinition}
+      />
+
+      {/* Create Executor Dialog */}
+      <CreateExecutorDialog
+        open={showCreateExecutorDialog}
+        onOpenChange={setShowCreateExecutorDialog}
+        onCreateExecutor={handleCreateExecutor}
+      />
+
+      {/* Create Suite Dialog */}
+      <CreateSuiteDialog
+        open={showCreateSuiteDialog}
+        onOpenChange={setShowCreateSuiteDialog}
+        onCreateSuite={handleCreateSuite}
+        availableDefinitions={testDefinitions}
       />
     </div>
   );

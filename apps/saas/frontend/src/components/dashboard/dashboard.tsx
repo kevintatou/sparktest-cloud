@@ -73,7 +73,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </p>
         </div>
         
-        <div className="flex flex-col sm:flex-row gap-4 items-start">
+        <div>
           <Button 
             size="lg" 
             onClick={() => setShowCreateDialog(true)} 
@@ -82,10 +82,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <Plus className="h-4 w-4" />
             Create New Definition
           </Button>
-          <div className="flex items-center space-x-2 text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-md">
-            <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-            <span>All systems operational</span>
-          </div>
         </div>
       </div>
 

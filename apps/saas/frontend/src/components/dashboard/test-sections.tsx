@@ -14,9 +14,13 @@ export interface TestSectionsProps {
   executors: Executor[];
   testSuites: Suite[];
   setShowCreateDialog: (show: boolean) => void;
+  setShowCreateExecutorDialog: (show: boolean) => void;
+  setShowCreateSuiteDialog: (show: boolean) => void;
   setActiveTab: (tab: NavigationKey) => void;
   handleRunTest: (id: string) => void;
+  handleRunSuite: (id: string) => void;
   handleDeleteTest: (id: string) => void;
+  deleteRun: (id: string) => void;
   deleteExecutor: (id: string) => void;
   deleteSuite: (id: string) => void;
 }
@@ -28,9 +32,13 @@ export const TestSections: React.FC<TestSectionsProps> = ({
   executors,
   testSuites,
   setShowCreateDialog,
+  setShowCreateExecutorDialog,
+  setShowCreateSuiteDialog,
   setActiveTab,
   handleRunTest,
+  handleRunSuite,
   handleDeleteTest,
+  deleteRun,
   deleteExecutor,
   deleteSuite,
 }) => {
@@ -50,7 +58,7 @@ export const TestSections: React.FC<TestSectionsProps> = ({
               Create Definition
             </Button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {testDefinitions.map(definition => (
               <TestDefinitionCard
                 key={definition.id}
@@ -62,10 +70,10 @@ export const TestSections: React.FC<TestSectionsProps> = ({
             {testDefinitions.length === 0 && (
               <div className="col-span-full">
                 <Card>
-                  <CardContent className="text-center py-12">
+                  <CardContent className="text-center py-16">
                     <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                     <h3 className="text-lg font-semibold mb-2">No definitions yet</h3>
-                    <p className="text-muted-foreground mb-4">Get started by creating your first definition</p>
+                    <p className="text-muted-foreground mb-6">Get started by creating your first definition</p>
                     <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
                       <Plus className="h-4 w-4" />
                       Create Your First Definition
@@ -87,17 +95,28 @@ export const TestSections: React.FC<TestSectionsProps> = ({
               Monitor your execution history and results.
             </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {testRuns.map(run => (
-              <TestRunCard key={run.id} run={run} />
+              <TestRunCard 
+                key={run.id} 
+                run={run}
+                onDelete={deleteRun}
+                onRetry={(runId) => {
+                  // Find the original definition for this run and run it again
+                  const definition = testDefinitions.find(d => d.id === run.definitionId);
+                  if (definition) {
+                    handleRunTest(definition.id);
+                  }
+                }}
+              />
             ))}
             {testRuns.length === 0 && (
               <div className="col-span-full">
                 <Card>
-                  <CardContent className="text-center py-12">
+                  <CardContent className="text-center py-16">
                     <Play className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                     <h3 className="text-lg font-semibold mb-2">No runs yet</h3>
-                    <p className="text-muted-foreground mb-4">Run a definition to see execution history here</p>
+                    <p className="text-muted-foreground mb-6">Run a definition to see execution history here</p>
                     <Button onClick={() => setActiveTab('definitions')} variant="outline">
                       View Definitions
                     </Button>
@@ -119,12 +138,12 @@ export const TestSections: React.FC<TestSectionsProps> = ({
                 Manage your execution environments.
               </p>
             </div>
-            <Button className="gap-2">
+            <Button onClick={() => setShowCreateExecutorDialog(true)} className="gap-2">
               <Plus className="h-4 w-4" />
               Add Executor
             </Button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {executors.map(executor => (
               <ExecutorCard 
                 key={executor.id} 
@@ -135,11 +154,11 @@ export const TestSections: React.FC<TestSectionsProps> = ({
             {executors.length === 0 && (
               <div className="col-span-full">
                 <Card>
-                  <CardContent className="text-center py-12">
+                  <CardContent className="text-center py-16">
                     <Server className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                     <h3 className="text-lg font-semibold mb-2">No executors yet</h3>
-                    <p className="text-muted-foreground mb-4">Add execution environments to run your definitions</p>
-                    <Button className="gap-2">
+                    <p className="text-muted-foreground mb-6">Add execution environments to run your definitions</p>
+                    <Button onClick={() => setShowCreateExecutorDialog(true)} className="gap-2">
                       <Plus className="h-4 w-4" />
                       Add Your First Executor
                     </Button>
@@ -161,27 +180,28 @@ export const TestSections: React.FC<TestSectionsProps> = ({
                 Group and manage collections of related definitions.
               </p>
             </div>
-            <Button className="gap-2">
+            <Button onClick={() => setShowCreateSuiteDialog(true)} className="gap-2">
               <Plus className="h-4 w-4" />
               Create Suite
             </Button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {testSuites.map(suite => (
               <TestSuiteCard 
                 key={suite.id} 
                 suite={suite}
+                onRun={handleRunSuite}
                 onDelete={deleteSuite}
               />
             ))}
             {testSuites.length === 0 && (
               <div className="col-span-full">
                 <Card>
-                  <CardContent className="text-center py-12">
+                  <CardContent className="text-center py-16">
                     <Layers className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                     <h3 className="text-lg font-semibold mb-2">No suites yet</h3>
-                    <p className="text-muted-foreground mb-4">Create suites to organize related definitions</p>
-                    <Button className="gap-2">
+                    <p className="text-muted-foreground mb-6">Create suites to organize related definitions</p>
+                    <Button onClick={() => setShowCreateSuiteDialog(true)} className="gap-2">
                       <Plus className="h-4 w-4" />
                       Create Your First Suite
                     </Button>

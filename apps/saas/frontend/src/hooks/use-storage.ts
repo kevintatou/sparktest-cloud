@@ -141,6 +141,60 @@ export function useStorage() {
     return newDefinition;
   };
 
+  const updateDefinition = async (id: string, updates: Partial<Omit<Definition, 'id' | 'createdAt'>>) => {
+    setDefinitions(prev => prev.map(def => 
+      def.id === id 
+        ? { ...def, ...updates }
+        : def
+    ));
+  };
+
+  const createExecutor = async (executorData: Omit<Executor, 'id' | 'createdAt'>) => {
+    const newExecutor: Executor = {
+      ...executorData,
+      id: `exec-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    setExecutors(prev => [newExecutor, ...prev]);
+    return newExecutor;
+  };
+
+  const updateExecutor = async (id: string, updates: Partial<Omit<Executor, 'id' | 'createdAt'>>) => {
+    setExecutors(prev => prev.map(exec => 
+      exec.id === id 
+        ? { ...exec, ...updates }
+        : exec
+    ));
+  };
+
+  const createSuite = async (suiteData: Omit<Suite, 'id' | 'createdAt'>) => {
+    const newSuite: Suite = {
+      ...suiteData,
+      id: `suite-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    setSuites(prev => [newSuite, ...prev]);
+    return newSuite;
+  };
+
+  const updateSuite = async (id: string, updates: Partial<Omit<Suite, 'id' | 'createdAt'>>) => {
+    setSuites(prev => prev.map(suite => 
+      suite.id === id 
+        ? { ...suite, ...updates }
+        : suite
+    ));
+  };
+
+  const runSuite = async (suiteId: string) => {
+    const suite = suites.find(s => s.id === suiteId);
+    if (!suite) throw new Error('Suite not found');
+
+    // Run all tests in the suite
+    for (const defId of suite.testDefinitionIds) {
+      await runTest(defId);
+    }
+  };
+
   const runTest = async (definitionId: string) => {
     const definition = definitions.find(d => d.id === definitionId);
     if (!definition) throw new Error('Definition not found');
@@ -192,7 +246,13 @@ export function useStorage() {
     suites,
     loading,
     createDefinition,
+    updateDefinition,
+    createExecutor,
+    updateExecutor,
+    createSuite,
+    updateSuite,
     runTest,
+    runSuite,
     deleteDefinition,
     deleteRun,
     deleteExecutor,
