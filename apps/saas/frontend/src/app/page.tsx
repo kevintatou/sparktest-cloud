@@ -1,12 +1,25 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TestDefinitionCard, TestRunCard, ExecutorCard, TestSuiteCard } from '@sparktest/ui';
-import { TestDefinition, TestRun, Executor, TestSuite, defaultConfig } from '@sparktest/core';
+import {
+  TestDefinitionCard,
+  TestRunCard,
+  ExecutorCard,
+  TestSuiteCard,
+} from '@sparktest/ui';
+import {
+  TestDefinition,
+  TestRun,
+  Executor,
+  TestSuite,
+  defaultConfig,
+} from '@sparktest/core';
 import { Plus, Play, Settings, Database } from 'lucide-react';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'definitions' | 'runs' | 'executors' | 'suites'>('definitions');
+  const [activeTab, setActiveTab] = useState<
+    'definitions' | 'runs' | 'executors' | 'suites'
+  >('definitions');
   const [testDefinitions, setTestDefinitions] = useState<TestDefinition[]>([]);
   const [testRuns, setTestRuns] = useState<TestRun[]>([]);
   const [executors, setExecutors] = useState<Executor[]>([]);
@@ -116,24 +129,30 @@ export default function Home() {
 
     // Simulate running
     setTimeout(() => {
-      setTestRuns(prev => prev.map(run => 
-        run.id === newRun.id 
-          ? { ...run, status: 'running' as const }
-          : run
-      ));
+      setTestRuns((prev) =>
+        prev.map((run) =>
+          run.id === newRun.id ? { ...run, status: 'running' as const } : run
+        )
+      );
     }, 1000);
 
     setTimeout(() => {
-      setTestRuns(prev => prev.map(run => 
-        run.id === newRun.id 
-          ? { ...run, status: 'completed' as const, result: { success: true } }
-          : run
-      ));
+      setTestRuns((prev) =>
+        prev.map((run) =>
+          run.id === newRun.id
+            ? {
+                ...run,
+                status: 'completed' as const,
+                result: { success: true },
+              }
+            : run
+        )
+      );
     }, 3000);
   };
 
   const handleDeleteTest = (id: string) => {
-    setTestDefinitions(testDefinitions.filter(t => t.id !== id));
+    setTestDefinitions(testDefinitions.filter((t) => t.id !== id));
   };
 
   const renderTabContent = () => {
@@ -152,7 +171,7 @@ export default function Home() {
               </button>
             </div>
             <div className="space-y-4">
-              {testDefinitions.map(definition => (
+              {testDefinitions.map((definition) => (
                 <TestDefinitionCard
                   key={definition.id}
                   definition={definition}
@@ -171,7 +190,7 @@ export default function Home() {
               <h2 className="text-2xl font-bold">Test Runs</h2>
             </div>
             <div className="space-y-4">
-              {testRuns.map(run => (
+              {testRuns.map((run) => (
                 <TestRunCard key={run.id} run={run} />
               ))}
             </div>
@@ -189,7 +208,7 @@ export default function Home() {
               </button>
             </div>
             <div className="space-y-4">
-              {executors.map(executor => (
+              {executors.map((executor) => (
                 <ExecutorCard key={executor.id} executor={executor} />
               ))}
             </div>
@@ -207,7 +226,7 @@ export default function Home() {
               </button>
             </div>
             <div className="space-y-4">
-              {testSuites.map(suite => (
+              {testSuites.map((suite) => (
                 <TestSuiteCard key={suite.id} suite={suite} />
               ))}
             </div>
@@ -257,9 +276,7 @@ export default function Home() {
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-8">
-        {renderTabContent()}
-      </main>
+      <main className="container mx-auto px-4 py-8">{renderTabContent()}</main>
     </div>
   );
 }

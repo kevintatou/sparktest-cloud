@@ -72,11 +72,15 @@ export const TestRunCard: React.FC<TestRunCardProps> = ({ run }) => {
     <div className="border rounded-lg p-4 mb-4">
       <div className="flex justify-between items-start mb-2">
         <h4 className="font-semibold">Run {run.id.slice(-8)}</h4>
-        <span className={`px-2 py-1 rounded text-sm ${statusColors[run.status]}`}>
+        <span
+          className={`px-2 py-1 rounded text-sm ${statusColors[run.status]}`}
+        >
           {run.status}
         </span>
       </div>
-      <p className="text-sm text-gray-600">Created: {new Date(run.created_at).toLocaleString()}</p>
+      <p className="text-sm text-gray-600">
+        Created: {new Date(run.created_at).toLocaleString()}
+      </p>
       {run.error && (
         <div className="mt-2 p-2 bg-red-50 border-l-4 border-red-500 text-red-700">
           {run.error}
@@ -106,7 +110,9 @@ export const ExecutorCard: React.FC<ExecutorCardProps> = ({
     <div className="border rounded-lg p-4 mb-4">
       <div className="flex justify-between items-start mb-2">
         <h3 className="font-bold">{executor.name}</h3>
-        <span className={`px-2 py-1 rounded text-sm ${statusColors[executor.status]}`}>
+        <span
+          className={`px-2 py-1 rounded text-sm ${statusColors[executor.status]}`}
+        >
           {executor.status}
         </span>
       </div>
@@ -157,7 +163,8 @@ export const TestSuiteCard: React.FC<TestSuiteCardProps> = ({
         <p className="text-gray-600 mb-2">{suite.description}</p>
       )}
       <p className="text-sm text-gray-600 mb-2">
-        {suite.test_definitions.length} test{suite.test_definitions.length !== 1 ? 's' : ''}
+        {suite.test_definitions.length} test
+        {suite.test_definitions.length !== 1 ? 's' : ''}
       </p>
       <div className="flex gap-2">
         {onEdit && (

@@ -1,0 +1,166 @@
+{
+  "name": "SparkTest SaaS Cloud",
+  "version": "0.1.0",
+  "description": "A Software-as-a-Service (SaaS) monorepo for SparkTest, built with modern technologies",
+  "type": "monorepo",
+  "architecture": {
+    "pattern": "monorepo",
+    "frontend": "Next.js 14 with TypeScript",
+    "backend": "Rust with Axum framework",
+    "database": "PostgreSQL (ready), In-memory storage (current)",
+    "package_manager": "pnpm workspaces"
+  },
+  "structure": {
+    "apps/saas/backend/": {
+      "description": "Rust backend with Axum web framework",
+      "language": "rust",
+      "framework": "axum",
+      "modules": {
+        "core/": "Core types and database models",
+        "api/": "Axum REST API server",
+        "bin/": "Binary executable"
+      }
+    },
+    "apps/saas/frontend/": {
+      "description": "Next.js application with TypeScript",
+      "language": "typescript",
+      "framework": "next.js",
+      "architecture": "app_router",
+      "styling": "tailwind_css",
+      "ui_library": "radix_ui"
+    },
+    "packages/core/": {
+      "description": "Shared TypeScript types and configuration",
+      "language": "typescript",
+      "exports": ["types", "config", "storage"]
+    },
+    "packages/ui/": {
+      "description": "Reusable UI components",
+      "language": "typescript",
+      "framework": "react"
+    }
+  },
+  "entities": {
+    "TestDefinition": {
+      "description": "Test code with metadata for execution",
+      "languages": ["javascript", "python", "rust"],
+      "fields": [
+        "id",
+        "name",
+        "description",
+        "code",
+        "language",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "TestRun": {
+      "description": "Execution instance of a test definition",
+      "statuses": ["pending", "running", "completed", "failed"],
+      "fields": [
+        "id",
+        "definition_id",
+        "status",
+        "result",
+        "error",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "Executor": {
+      "description": "Test execution environment",
+      "types": ["local", "kubernetes", "docker"],
+      "statuses": ["active", "inactive"],
+      "fields": [
+        "id",
+        "name",
+        "type",
+        "config",
+        "status",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "TestSuite": {
+      "description": "Collection of test definitions",
+      "fields": [
+        "id",
+        "name",
+        "description",
+        "test_definitions",
+        "created_at",
+        "updated_at"
+      ]
+    }
+  },
+  "patterns": {
+    "naming_conventions": {
+      "rust": "snake_case for functions and variables, PascalCase for types",
+      "typescript": "camelCase for functions and variables, PascalCase for types and components",
+      "files": "kebab-case for file names, except React components (PascalCase)"
+    },
+    "api_routes": {
+      "pattern": "/api/{resource}",
+      "methods": ["GET", "POST", "PUT", "DELETE"],
+      "format": "REST with JSON"
+    },
+    "error_handling": {
+      "rust": "Result<T, anyhow::Error> for fallible operations",
+      "typescript": "try-catch blocks with proper error types"
+    },
+    "state_management": {
+      "frontend": "React state with potential for Zustand or Context API",
+      "backend": "Arc<Mutex<>> for shared state (temporary), PostgreSQL for persistence"
+    }
+  },
+  "development": {
+    "commands": {
+      "install": "pnpm install",
+      "build": "pnpm build",
+      "dev_frontend": "pnpm dev:frontend",
+      "dev_backend": "pnpm dev:backend",
+      "dev_all": "pnpm dev:all",
+      "test": "pnpm test",
+      "lint": "pnpm lint",
+      "format": "pnpm format"
+    },
+    "ports": {
+      "frontend": 3000,
+      "backend": 3001
+    },
+    "tools": {
+      "linting": "ESLint for TypeScript, Clippy for Rust",
+      "formatting": "Prettier for TypeScript, rustfmt for Rust",
+      "bundling": "Next.js built-in for frontend, Cargo for backend"
+    }
+  },
+  "dependencies": {
+    "frontend": {
+      "framework": "next@14",
+      "styling": "tailwindcss",
+      "ui": "@radix-ui/*",
+      "icons": "lucide-react",
+      "language": "typescript"
+    },
+    "backend": {
+      "framework": "axum",
+      "serialization": "serde",
+      "async": "tokio",
+      "database": "sqlx (future), in-memory (current)",
+      "ids": "uuid",
+      "datetime": "chrono"
+    }
+  },
+  "context": {
+    "domain": "Test execution platform for modern developers",
+    "target_users": "Developers who need to run tests in various languages",
+    "key_features": [
+      "CRUD operations for test definitions, runs, executors, and suites",
+      "Multi-language test execution support",
+      "Both local storage and API storage modes",
+      "Monorepo architecture with shared types",
+      "Type safety across TypeScript and Rust boundaries"
+    ],
+    "inspiration": "Based on the open-source SparkTest project design principles"
+  }
+}

@@ -25,10 +25,10 @@ packages/
 - **Full CRUD Operations**: Complete Create, Read, Update, Delete functionality for:
   - Test Definitions
   - Test Runs
-  - Executors  
+  - Executors
   - Test Suites
 - **Storage Service**: Supports both local storage and API modes
-- **Modern Stack**: 
+- **Modern Stack**:
   - Frontend: Next.js 14, TypeScript, Tailwind CSS, Radix UI
   - Backend: Rust, Axum, PostgreSQL (ready), In-memory storage (current)
 - **Monorepo**: pnpm workspaces with shared packages
@@ -39,7 +39,7 @@ packages/
 ### Prerequisites
 
 - Node.js 18+
-- pnpm 
+- pnpm
 - Rust 1.70+
 - Cargo
 
@@ -52,7 +52,7 @@ pnpm install
 # Build packages
 pnpm build:packages
 
-# Build applications  
+# Build applications
 pnpm build:apps
 ```
 
@@ -70,7 +70,7 @@ pnpm dev:frontend
 
 The frontend will be available at http://localhost:3000
 
-#### Backend Development  
+#### Backend Development
 
 ```bash
 # Start backend API server
@@ -95,7 +95,7 @@ pnpm dev:all
 
 ```bash
 pnpm build:saas-frontend
-cd apps/saas/frontend 
+cd apps/saas/frontend
 pnpm start
 ```
 
@@ -150,13 +150,13 @@ pnpm install
 # Build all packages
 pnpm build:packages
 
-# Build all applications  
+# Build all applications
 pnpm build:apps
 
 # Development servers
 pnpm dev              # Frontend only
 pnpm dev:frontend     # Frontend only
-pnpm dev:backend      # Backend only  
+pnpm dev:backend      # Backend only
 pnpm dev:all          # Both concurrently
 
 # Testing
@@ -177,6 +177,7 @@ cargo check           # Check Rust code
 ## Technology Stack
 
 ### Frontend
+
 - **Next.js 14** - React framework with App Router
 - **TypeScript** - Type safety
 - **Tailwind CSS** - Utility-first CSS framework
@@ -184,6 +185,7 @@ cargo check           # Check Rust code
 - **Lucide React** - Icon library
 
 ### Backend
+
 - **Rust** - Systems programming language
 - **Axum** - Web framework
 - **Tokio** - Async runtime
@@ -192,6 +194,7 @@ cargo check           # Check Rust code
 - **Chrono** - Date/time handling
 
 ### Shared
+
 - **pnpm** - Package manager with workspace support
 - **TypeScript** - Shared type definitions
 - **Prettier** - Code formatting
@@ -204,7 +207,7 @@ cargo check           # Check Rust code
 │   └── saas/
 │       ├── backend/
 │       │   ├── core/       # Rust core library
-│       │   ├── api/        # Axum API server  
+│       │   ├── api/        # Axum API server
 │       │   └── bin/        # Binary executable
 │       └── frontend/       # Next.js application
 │           ├── src/app/    # App Router pages
@@ -212,7 +215,7 @@ cargo check           # Check Rust code
 │           └── src/lib/    # Utilities
 ├── packages/
 │   ├── core/              # Shared TypeScript types
-│   └── ui/                # Reusable UI components  
+│   └── ui/                # Reusable UI components
 ├── Cargo.toml            # Rust workspace
 ├── pnpm-workspace.yaml   # pnpm workspace
 └── package.json          # Root package.json
@@ -222,13 +225,30 @@ cargo check           # Check Rust code
 
 1. Follow the established patterns from the OSS sparktest repository
 2. Maintain type safety across TypeScript and Rust
-3. Write tests for new functionality  
+3. Write tests for new functionality
 4. Use conventional commits
 5. Ensure all builds pass before submitting PRs
 
 ## License
 
 MIT License - see LICENSE file for details.
+
+## AI Assistant Context
+
+This project includes comprehensive context for AI assistants like GitHub Copilot:
+
+- **MCP Configuration**: `.mcp/config.json` - Detailed project structure and patterns
+- **Copilot Instructions**: `.github/copilot-instructions.md` - AI-specific development guidelines
+- **Development Guidelines**: `DEVELOPMENT_GUIDELINES.md` - Comprehensive coding standards
+
+These files help AI assistants understand:
+
+- Project architecture and technology stack
+- Coding conventions and best practices
+- API design patterns and entity relationships
+- Development workflow and common commands
+
+For optimal AI assistance, refer to these context files when working on the project.
 
 ## Inspiration
 
