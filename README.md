@@ -22,17 +22,21 @@ packages/
 
 ## Features
 
-- **Full CRUD Operations**: Complete Create, Read, Update, Delete functionality for:
-  - Test Definitions
-  - Test Runs
-  - Executors
-  - Test Suites
-- **Storage Service**: Supports both local storage and API modes
-- **Modern Stack**:
-  - Frontend: Next.js 14, TypeScript, Tailwind CSS, Radix UI
-  - Backend: Rust, Axum, PostgreSQL (ready), In-memory storage (current)
-- **Monorepo**: pnpm workspaces with shared packages
-- **Type Safety**: End-to-end TypeScript/Rust type safety
+- **Multi-Tenant SaaS Architecture**: Organization-based tenancy with user management
+- **Comprehensive CRUD Operations**: Complete Create, Read, Update, Delete functionality for:
+  - SaaS Test Definitions (with organizational context)
+  - Test Runs (with tenant isolation)
+  - Executors (with organizational ownership)
+  - Test Suites (with organizational scope)
+  - Organizations and Users
+- **Dual Storage Modes**: Supports both local storage and API backend modes
+- **Modern Tech Stack**:
+  - Frontend: Next.js 14 with App Router, TypeScript, Tailwind CSS, Radix UI
+  - Backend: Rust with Axum, multi-tenancy support, PostgreSQL-ready
+  - Storage: In-memory (current), PostgreSQL migration planned
+- **Monorepo Architecture**: pnpm workspaces with shared TypeScript types
+- **End-to-End Type Safety**: Consistent entity definitions across TypeScript and Rust
+- **Public Resource Sharing**: Test definitions can be shared across organizations
 
 ## Quick Start
 
@@ -108,17 +112,38 @@ cargo run --release -p sparktest-saas-bin
 
 ## API Endpoints
 
-The backend provides a REST API with the following endpoints:
+The backend provides a multi-tenant REST API with the following endpoints:
 
-- `GET /api/health` - Health check
-- `GET|POST /api/test-definitions` - List/create test definitions
-- `GET|PUT|DELETE /api/test-definitions/:id` - Get/update/delete test definition
-- `GET|POST /api/test-runs` - List/create test runs
-- `GET /api/test-runs/:id` - Get test run
-- `GET|POST /api/executors` - List/create executors (placeholder)
-- `GET|PUT|DELETE /api/executors/:id` - Manage executors (placeholder)
-- `GET|POST /api/test-suites` - List/create test suites (placeholder)
-- `GET|PUT|DELETE /api/test-suites/:id` - Manage test suites (placeholder)
+### Core Health Check
+- `GET /api/health` - Health check endpoint
+
+### SaaS Test Definitions (Multi-tenant)
+- `GET /api/test-definitions` - List test definitions (filtered by organization)
+- `POST /api/test-definitions` - Create new test definition (with organizational context)
+- `GET /api/test-definitions/:id` - Get specific test definition (with tenant validation)
+- `PUT /api/test-definitions/:id` - Update test definition (with ownership validation)
+- `DELETE /api/test-definitions/:id` - Delete test definition (with ownership validation)
+
+### SaaS Test Runs (Multi-tenant)
+- `GET /api/test-runs` - List test runs (filtered by organization)
+- `POST /api/test-runs` - Create new test run (with organizational context)
+- `GET /api/test-runs/:id` - Get specific test run (with tenant validation)
+
+### SaaS Executors (Multi-tenant)
+- `GET /api/executors` - List executors (filtered by organization)
+- `POST /api/executors` - Create new executor (with organizational context)
+- `GET /api/executors/:id` - Get specific executor (with tenant validation)
+- `PUT /api/executors/:id` - Update executor (with ownership validation)
+- `DELETE /api/executors/:id` - Delete executor (with ownership validation)
+
+### SaaS Test Suites (Multi-tenant)
+- `GET /api/test-suites` - List test suites (filtered by organization)
+- `POST /api/test-suites` - Create new test suite (with organizational context)
+- `GET /api/test-suites/:id` - Get specific test suite (with tenant validation)
+- `PUT /api/test-suites/:id` - Update test suite (with ownership validation)
+- `DELETE /api/test-suites/:id` - Delete test suite (with ownership validation)
+
+**Note**: All endpoints (except health check) include multi-tenant filtering and validation to ensure data isolation between organizations.
 
 ## Configuration
 
@@ -134,12 +159,27 @@ RUST_LOG=info
 
 ### Storage Modes
 
-The system supports two storage modes:
+The system implements a flexible `StorageService` abstraction supporting two modes:
 
-1. **API Mode** (default): Frontend communicates with backend API
-2. **Local Mode**: Frontend uses local storage (for offline usage)
+1. **API Mode** (default): Frontend communicates with Rust backend API
+   - Multi-tenant data filtering at the backend level
+   - Real-time data sharing between users in the same organization
+   - Proper tenant isolation and security
+   
+2. **Local Mode**: Frontend uses browser localStorage for offline development
+   - Tenant-aware local storage with organization-based keys
+   - Useful for offline development and testing
+   - Data persists locally per organization context
 
-Configure in `packages/core/src/config.ts`.
+Configure in `packages/core/src/config.ts`:
+
+```typescript
+export const defaultConfig: AppConfig = {
+  backend_url: 'http://localhost:3001',
+  storage_mode: 'api', // or 'local'
+  debug: false,
+};
+```
 
 ## Development Commands
 

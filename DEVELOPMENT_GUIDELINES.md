@@ -95,18 +95,21 @@ pub struct SaasTestDefinition {
     pub is_public: bool,
 }
 ```
-- **Framework**: Axum for HTTP server
-- **Async Runtime**: Tokio
-- **Serialization**: Serde with JSON
-- **Database**: PostgreSQL (planned), in-memory (current)
-- **ORM**: SQLx (planned)
-- **Error Handling**: anyhow
 
-#### Shared
+### Storage Architecture
 
-- **Package Manager**: pnpm with workspaces
-- **Formatting**: Prettier (TS), rustfmt (Rust)
-- **Linting**: ESLint (TS), Clippy (Rust)
+The project implements a flexible storage abstraction supporting two modes:
+
+- **API Mode** (default): Frontend communicates with Rust backend via REST API
+- **Local Mode**: Frontend uses browser localStorage for offline development
+
+```typescript
+interface StorageService {
+  saveTestDefinition(definition: SaasTestDefinition, context?: TenantContext): Promise<string>;
+  listTestDefinitions(context?: TenantContext): Promise<SaasTestDefinition[]>;
+  // ... other CRUD operations with tenant context
+}
+```
 
 ## Coding Standards
 
@@ -122,21 +125,25 @@ pub struct SaasTestDefinition {
 #### Code Style
 
 ```typescript
-// ✅ Good
-interface TestDefinition {
+// ✅ Good - SaaS entity with multi-tenancy
+interface SaasTestDefinition {
   id: string;
   name: string;
   description?: string;
   code: string;
   language: 'javascript' | 'python' | 'rust';
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string;
+  user_id?: string;
+  organization_id?: string;
+  is_public: boolean;
 }
 
 const createTestDefinition = async (
-  data: Partial<TestDefinition>
-): Promise<TestDefinition> => {
-  // Implementation
+  data: Partial<SaasTestDefinition>,
+  context?: TenantContext
+): Promise<SaasTestDefinition> => {
+  // Implementation with tenant context
 };
 
 // ❌ Bad
@@ -148,7 +155,7 @@ interface testDefinition {
 }
 
 function CreateTestDefinition(data) {
-  // Implementation
+  // No types, no tenant context
 }
 ```
 
@@ -159,6 +166,8 @@ function CreateTestDefinition(data) {
 - Prefer `interface` over `type` for object shapes
 - Use utility types (`Partial`, `Pick`, `Omit`) appropriately
 - Implement proper error boundaries in React components
+- **Multi-tenancy**: Always include `TenantContext` in service calls
+- **Type safety**: Ensure TypeScript types match Rust structs exactly
 
 ### Rust Guidelines
 
@@ -270,12 +279,14 @@ DELETE /api/test-definitions/:id   # Delete test definition
 ### Request/Response Format
 
 ```typescript
-// Request body (POST/PUT)
+// Request body (POST/PUT) - SaaS version with tenant context
 {
   "name": "Sample Test",
   "description": "A sample test definition",
   "code": "console.log('Hello, World!');",
-  "language": "javascript"
+  "language": "javascript",
+  "is_public": false
+  // user_id and organization_id handled by auth context
 }
 
 // Success response
@@ -283,7 +294,14 @@ DELETE /api/test-definitions/:id   # Delete test definition
   "data": {
     "id": "uuid-here",
     "name": "Sample Test",
-    // ... other fields
+    "description": "A sample test definition",
+    "code": "console.log('Hello, World!');",
+    "language": "javascript",
+    "created_at": "2023-01-01T00:00:00Z",
+    "updated_at": "2023-01-01T00:00:00Z",
+    "user_id": "user-uuid",
+    "organization_id": "org-uuid",
+    "is_public": false
   }
 }
 
@@ -300,6 +318,42 @@ DELETE /api/test-definitions/:id   # Delete test definition
 }
 ```
 
+### Multi-Tenancy Implementation
+
+#### Tenant Context
+
+All SaaS entities must include tenant context:
+
+```rust
+// Rust: Filter by organization in all queries
+pub async fn list_test_definitions(
+    &self, 
+    user_id: Option<Uuid>, 
+    organization_id: Option<Uuid>
+) -> Result<Vec<SaasTestDefinition>, anyhow::Error> {
+    let defs = self.test_definitions.lock().unwrap();
+    Ok(defs.iter()
+        .filter(|d| d.organization_id == organization_id)
+        .cloned()
+        .collect())
+}
+```
+
+```typescript
+// TypeScript: Use StorageService with TenantContext
+const definitions = await storageService.listTestDefinitions({
+  user_id: currentUser.id,
+  organization_id: currentUser.organization_id
+});
+```
+
+#### Security Rules
+
+1. **Data Isolation**: Never return data from other organizations
+2. **Public Resources**: Handle `is_public` flag for cross-tenant sharing
+3. **User Validation**: Ensure users can only access their organization's data
+4. **API Filtering**: Apply organization filters at the database/storage level
+
 ### Error Handling
 
 - Use appropriate HTTP status codes
@@ -312,16 +366,23 @@ DELETE /api/test-definitions/:id   # Delete test definition
 ### Frontend Testing
 
 ```typescript
-// Component tests
+// Component tests with SaaS entities
 import { render, screen } from '@testing-library/react';
 import { TestDefinitionCard } from './TestDefinitionCard';
 
 describe('TestDefinitionCard', () => {
-  it('renders test definition name', () => {
-    const definition = {
+  it('renders test definition name and handles multi-tenancy', () => {
+    const definition: SaasTestDefinition = {
       id: '1',
       name: 'Test Name',
-      // ... other required fields
+      description: 'Test description',
+      code: 'console.log("test");',
+      language: 'javascript',
+      created_at: '2023-01-01T00:00:00Z',
+      updated_at: '2023-01-01T00:00:00Z',
+      user_id: 'user-1',
+      organization_id: 'org-1',
+      is_public: false
     };
 
     render(<TestDefinitionCard definition={definition} />);
@@ -338,16 +399,31 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_create_test_definition() {
+    async fn test_create_test_definition_with_tenant_isolation() {
         let db = Database::new("test_url").await.unwrap();
+        let org_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        
         let definition = SaasTestDefinition {
             id: Uuid::new_v4(),
             name: "Test".to_string(),
-            // ... other fields
+            description: Some("Test description".to_string()),
+            code: "console.log('test');".to_string(),
+            language: "javascript".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            user_id: Some(user_id),
+            organization_id: Some(org_id),
+            is_public: false,
         };
 
         let result = db.create_test_definition(&definition).await;
         assert!(result.is_ok());
+        
+        // Test tenant isolation
+        let retrieved = db.list_test_definitions(Some(user_id), Some(org_id)).await.unwrap();
+        assert_eq!(retrieved.len(), 1);
+        assert_eq!(retrieved[0].organization_id, Some(org_id));
     }
 }
 ```
@@ -370,17 +446,53 @@ mod tests {
 
 ## Security Guidelines
 
+### Multi-Tenant Security
+
+**Critical**: All operations must respect tenant boundaries to prevent data leakage.
+
+#### Tenant Isolation Rules
+1. **Database Queries**: Always filter by `organization_id`
+2. **API Endpoints**: Validate user belongs to requested organization  
+3. **Public Resources**: Handle `is_public` flag carefully
+4. **Cross-Tenant Access**: Explicitly denied except for public resources
+
+```rust
+// ✅ Correct: Always filter by organization
+pub async fn list_test_definitions(
+    &self,
+    user_id: Option<Uuid>,
+    organization_id: Option<Uuid>
+) -> Result<Vec<SaasTestDefinition>, anyhow::Error> {
+    let defs = self.test_definitions.lock().unwrap();
+    Ok(defs.iter()
+        .filter(|d| {
+            // User can see their org's resources or public resources
+            d.organization_id == organization_id || 
+            (d.is_public && organization_id.is_some())
+        })
+        .cloned()
+        .collect())
+}
+
+// ❌ Wrong: No tenant filtering
+pub async fn list_all_test_definitions(&self) -> Result<Vec<SaasTestDefinition>, anyhow::Error> {
+    let defs = self.test_definitions.lock().unwrap();
+    Ok(defs.clone()) // Exposes all tenants' data!
+}
+```
+
 ### Authentication & Authorization
 
-- Implement proper user authentication
-- Use JWT tokens with appropriate expiration
-- Validate user permissions for all operations
-- Sanitize all user inputs
+- Implement proper user authentication with organization context
+- Use JWT tokens with appropriate expiration and organization claims
+- Validate user permissions for all operations within their organization
+- Sanitize all user inputs to prevent injection attacks
+- Implement rate limiting per organization
 
 ### Data Validation
 
 ```rust
-// Backend validation
+// Backend validation with SaaS context
 #[derive(Deserialize)]
 pub struct CreateTestDefinitionRequest {
     #[serde(deserialize_with = "validate_name")]
@@ -388,6 +500,7 @@ pub struct CreateTestDefinitionRequest {
     pub description: Option<String>,
     pub code: String,
     pub language: TestLanguage,
+    pub is_public: Option<bool>, // SaaS-specific field
 }
 
 fn validate_name<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -398,7 +511,10 @@ where
     if name.trim().is_empty() {
         return Err(serde::de::Error::custom("Name cannot be empty"));
     }
-    Ok(name)
+    if name.len() > 255 {
+        return Err(serde::de::Error::custom("Name too long"));
+    }
+    Ok(name.trim().to_string())
 }
 ```
 
@@ -407,6 +523,7 @@ where
 - Never commit secrets to version control
 - Use `.env` files for local development
 - Validate required environment variables on startup
+- Include organization-specific configuration for multi-tenancy
 
 ## Code Review Checklist
 
