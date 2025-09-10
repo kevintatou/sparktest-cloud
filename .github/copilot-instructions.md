@@ -4,12 +4,13 @@ This document provides context and guidelines for GitHub Copilot and other AI as
 
 ## Project Overview
 
-SparkTest SaaS Cloud is a monorepo containing a test execution platform built with:
+SparkTest SaaS Cloud is a multi-tenant SaaS monorepo containing a test execution platform built with:
 
-- **Frontend**: Next.js 14 with TypeScript, Tailwind CSS, and Radix UI
-- **Backend**: Rust with Axum web framework
+- **Frontend**: Next.js 14 with TypeScript, App Router, Tailwind CSS, and Radix UI
+- **Backend**: Rust with Axum web framework and multi-tenancy support
 - **Database**: PostgreSQL (ready), in-memory storage (current)
 - **Package Manager**: pnpm workspaces
+- **Architecture**: Organization-based multi-tenancy with user management
 
 ## Architecture Patterns
 
@@ -29,10 +30,19 @@ packages/
 
 ### Key Entities
 
-- **TestDefinition**: Test code with metadata (supports JavaScript, Python, Rust)
-- **TestRun**: Execution instance with status tracking
-- **Executor**: Test execution environment (local, kubernetes, docker)
-- **TestSuite**: Collection of test definitions
+- **SaasTestDefinition**: Test code with metadata and organizational context (supports JavaScript, Python, Rust)
+- **SaasTestRun**: Execution instance with status tracking and tenant isolation
+- **SaasExecutor**: Test execution environment with organizational ownership (local, kubernetes, docker)
+- **SaasTestSuite**: Collection of test definitions within organization scope
+- **Organization**: Multi-tenant root entity for SaaS model
+- **User**: User entity with organizational membership
+
+### Multi-Tenancy Model
+
+- **Organization-based tenancy**: Each organization is a separate tenant
+- **User membership**: Users belong to organizations and can only access their organization's resources
+- **Resource isolation**: All SaaS entities include `user_id` and `organization_id` for proper data separation
+- **Public sharing**: Test definitions can be marked as public for cross-organization sharing
 
 ## Coding Guidelines
 
@@ -59,16 +69,25 @@ packages/
 - Follow REST conventions: `/api/{resource}`
 - Use standard HTTP methods (GET, POST, PUT, DELETE)
 - Return JSON responses with consistent error format
-- Include proper status codes
+- Include proper status codes and multi-tenant filtering
 - Validate input data before processing
+- Apply organization-based filtering for all tenant-scoped resources
 
 ### React Components
 
 - Use functional components with hooks
 - Prefer composition over inheritance
 - Extract reusable logic into custom hooks
-- Use TypeScript props interfaces
+- Use TypeScript props interfaces with proper SaaS entity types
 - Follow Radix UI patterns for accessibility
+- Implement storage service abstraction for local/API modes
+
+### Storage Architecture
+
+- **StorageService interface**: Abstraction for local and API storage modes
+- **API mode**: Frontend communicates with Rust backend via REST API
+- **Local mode**: Frontend uses local storage for offline development
+- **Type safety**: Consistent entity definitions between Rust and TypeScript
 
 ## Development Workflow
 
@@ -104,17 +123,25 @@ pnpm format
 
 ### When Adding Features
 
-1. **Start with types**: Define interfaces/structs first
-2. **Update shared packages**: Modify `@sparktest/core` if needed
-3. **Backend first**: Implement Rust API endpoints
-4. **Frontend integration**: Consume API in Next.js components
-5. **Test thoroughly**: Verify type safety end-to-end
+1. **Start with types**: Define interfaces/structs first in both Rust and TypeScript
+2. **Consider multi-tenancy**: Add `user_id` and `organization_id` fields where appropriate
+3. **Update shared packages**: Modify `@sparktest/core` for type definitions
+4. **Backend first**: Implement Rust API endpoints with proper tenant filtering
+5. **Frontend integration**: Consume API in Next.js components using StorageService
+6. **Test thoroughly**: Verify type safety and multi-tenant isolation end-to-end
 
 ### Error Handling
 
-- **Rust**: Use `anyhow::Error` with context
-- **TypeScript**: Use proper error boundaries and try-catch
-- **API**: Return consistent error format with helpful messages
+- **Rust**: Use `anyhow::Error` with context and proper error propagation
+- **TypeScript**: Use proper error boundaries and try-catch with typed errors
+- **API**: Return consistent error format with helpful messages and proper HTTP status codes
+
+### Multi-Tenant Development
+
+- **Always filter by organization**: Ensure all queries include organization-based filtering
+- **User context**: Maintain user and organization context throughout the application
+- **Data isolation**: Never allow cross-tenant data access
+- **Public resources**: Handle public test definitions that can be shared across organizations
 
 ### Performance
 
@@ -124,9 +151,32 @@ pnpm format
 
 ### State Management
 
-- **Frontend**: React state, consider Zustand for complex state
-- **Backend**: `Arc<Mutex<>>` for current in-memory storage
-- **Future**: Replace with proper PostgreSQL operations
+- **Frontend**: React state with StorageService abstraction, consider Zustand for complex state
+- **Backend**: `Arc<Mutex<>>` for current in-memory storage, PostgreSQL for future persistence
+- **Storage modes**: Support both local storage and API backend modes
+- **Multi-tenant context**: Maintain organization and user context throughout the application
+
+### Development Workflow
+
+```bash
+# Install dependencies
+pnpm install
+
+# Build packages first, then apps
+pnpm build:packages
+pnpm build:apps
+
+# Development servers
+pnpm dev              # Frontend only (Next.js on :3000)
+pnpm dev:backend      # Rust API on :3001
+pnpm dev:all          # Both concurrently
+
+# Testing and quality
+pnpm test
+pnpm lint
+pnpm format
+pnpm type-check
+```
 
 ## File Naming Conventions
 
@@ -144,11 +194,31 @@ pnpm format
 
 ## Code Review Guidelines
 
-- Verify type safety across language boundaries
-- Check for proper error handling
-- Ensure consistent naming conventions
-- Validate API design follows REST principles
-- Review for security implications (especially in SaaS context)
+- Verify type safety across language boundaries (TypeScript ↔ Rust)
+- Check for proper error handling and multi-tenant data isolation
+- Ensure consistent naming conventions across languages
+- Validate API design follows REST principles with proper tenant filtering
+- Review for security implications (especially tenant isolation in SaaS context)
+- Confirm StorageService abstraction is properly implemented
+- Test multi-tenant scenarios and public resource sharing
+
+## SaaS-Specific Considerations
+
+### Security
+- **Tenant isolation**: Ensure no cross-tenant data leakage
+- **Authentication**: Implement proper user authentication and session management
+- **Authorization**: Role-based access control within organizations
+- **Data validation**: Validate all inputs and sanitize user-generated content
+
+### Performance
+- **Database queries**: Optimize for multi-tenant filtering
+- **Caching**: Consider tenant-aware caching strategies
+- **Resource limits**: Implement proper resource quotas per organization
+
+### Scalability
+- **Database design**: Prepare for PostgreSQL migration with proper indexing
+- **API design**: Design for horizontal scaling and load balancing
+- **Multi-tenant optimization**: Efficient data partitioning strategies
 
 ---
 

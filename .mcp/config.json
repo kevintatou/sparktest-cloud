@@ -1,14 +1,16 @@
 {
   "name": "SparkTest SaaS Cloud",
   "version": "0.1.0",
-  "description": "A Software-as-a-Service (SaaS) monorepo for SparkTest, built with modern technologies",
+  "description": "A Software-as-a-Service (SaaS) monorepo for SparkTest with multi-tenancy, built with modern technologies",
   "type": "monorepo",
   "architecture": {
     "pattern": "monorepo",
-    "frontend": "Next.js 14 with TypeScript",
+    "frontend": "Next.js 14 with TypeScript and App Router",
     "backend": "Rust with Axum framework",
     "database": "PostgreSQL (ready), In-memory storage (current)",
-    "package_manager": "pnpm workspaces"
+    "package_manager": "pnpm workspaces",
+    "multi_tenancy": "Organization-based with user management",
+    "storage_modes": ["local", "api"]
   },
   "structure": {
     "apps/saas/backend/": {
@@ -41,8 +43,8 @@
     }
   },
   "entities": {
-    "TestDefinition": {
-      "description": "Test code with metadata for execution",
+    "SaasTestDefinition": {
+      "description": "Test code with metadata for execution, with SaaS multi-tenancy support",
       "languages": ["javascript", "python", "rust"],
       "fields": [
         "id",
@@ -51,11 +53,15 @@
         "code",
         "language",
         "created_at",
-        "updated_at"
-      ]
+        "updated_at",
+        "user_id",
+        "organization_id",
+        "is_public"
+      ],
+      "multi_tenant": true
     },
-    "TestRun": {
-      "description": "Execution instance of a test definition",
+    "SaasTestRun": {
+      "description": "Execution instance of a test definition with organizational context",
       "statuses": ["pending", "running", "completed", "failed"],
       "fields": [
         "id",
@@ -64,53 +70,91 @@
         "result",
         "error",
         "created_at",
-        "updated_at"
-      ]
+        "updated_at",
+        "user_id",
+        "organization_id"
+      ],
+      "multi_tenant": true
     },
-    "Executor": {
-      "description": "Test execution environment",
+    "SaasExecutor": {
+      "description": "Test execution environment with organizational ownership",
       "types": ["local", "kubernetes", "docker"],
       "statuses": ["active", "inactive"],
       "fields": [
         "id",
         "name",
-        "type",
+        "executor_type",
         "config",
         "status",
         "created_at",
-        "updated_at"
-      ]
+        "updated_at",
+        "user_id",
+        "organization_id"
+      ],
+      "multi_tenant": true
     },
-    "TestSuite": {
-      "description": "Collection of test definitions",
+    "SaasTestSuite": {
+      "description": "Collection of test definitions with organizational scope",
       "fields": [
         "id",
         "name",
         "description",
         "test_definitions",
         "created_at",
+        "updated_at",
+        "user_id",
+        "organization_id"
+      ],
+      "multi_tenant": true
+    },
+    "Organization": {
+      "description": "Multi-tenant organization entity for SaaS model",
+      "fields": [
+        "id",
+        "name",
+        "created_at",
         "updated_at"
-      ]
+      ],
+      "is_tenant_root": true
+    },
+    "User": {
+      "description": "User entity with organizational membership",
+      "fields": [
+        "id",
+        "email",
+        "name",
+        "organization_id",
+        "created_at",
+        "updated_at"
+      ],
+      "belongs_to": "Organization"
     }
   },
   "patterns": {
     "naming_conventions": {
-      "rust": "snake_case for functions and variables, PascalCase for types",
+      "rust": "snake_case for functions and variables, PascalCase for types and structs",
       "typescript": "camelCase for functions and variables, PascalCase for types and components",
       "files": "kebab-case for file names, except React components (PascalCase)"
     },
     "api_routes": {
       "pattern": "/api/{resource}",
       "methods": ["GET", "POST", "PUT", "DELETE"],
-      "format": "REST with JSON"
+      "format": "REST with JSON",
+      "multi_tenancy": "Filtered by user_id and organization_id where applicable"
     },
     "error_handling": {
       "rust": "Result<T, anyhow::Error> for fallible operations",
       "typescript": "try-catch blocks with proper error types"
     },
     "state_management": {
-      "frontend": "React state with potential for Zustand or Context API",
-      "backend": "Arc<Mutex<>> for shared state (temporary), PostgreSQL for persistence"
+      "frontend": "React state with StorageService abstraction (local/API modes)",
+      "backend": "Arc<Mutex<>> for shared state (temporary), PostgreSQL for future persistence",
+      "storage_service": "Abstraction layer supporting both local storage and API modes"
+    },
+    "multi_tenancy": {
+      "approach": "Organization-based multi-tenancy",
+      "entity_filtering": "All SaaS entities include user_id and organization_id",
+      "data_isolation": "Logical separation by organization_id"
     }
   },
   "development": {
@@ -136,31 +180,51 @@
   },
   "dependencies": {
     "frontend": {
-      "framework": "next@14",
-      "styling": "tailwindcss",
-      "ui": "@radix-ui/*",
-      "icons": "lucide-react",
-      "language": "typescript"
+      "framework": "next@14.2.16",
+      "styling": "tailwindcss@^3.4.17",
+      "ui": "@radix-ui/* (accordion, dialog, dropdown-menu, label, select, tabs, toast)",
+      "icons": "lucide-react@^0.454.0",
+      "language": "typescript@^5",
+      "utilities": "class-variance-authority, clsx, tailwind-merge, tailwindcss-animate",
+      "workspace_packages": "@sparktest/core, @sparktest/ui"
     },
     "backend": {
       "framework": "axum",
       "serialization": "serde",
       "async": "tokio",
-      "database": "sqlx (future), in-memory (current)",
+      "database": "in-memory (current), sqlx (future)",
       "ids": "uuid",
-      "datetime": "chrono"
+      "datetime": "chrono",
+      "errors": "anyhow",
+      "cors": "tower-http"
+    },
+    "shared": {
+      "package_manager": "pnpm@9.0.0",
+      "workspace_config": "pnpm-workspace.yaml",
+      "build_tools": "tsup, typescript",
+      "dev_tools": "concurrently, prettier"
     }
   },
   "context": {
-    "domain": "Test execution platform for modern developers",
-    "target_users": "Developers who need to run tests in various languages",
+    "domain": "Multi-tenant SaaS test execution platform for modern developers",
+    "target_users": "Development teams and organizations needing to run tests in various languages",
     "key_features": [
-      "CRUD operations for test definitions, runs, executors, and suites",
-      "Multi-language test execution support",
-      "Both local storage and API storage modes",
-      "Monorepo architecture with shared types",
-      "Type safety across TypeScript and Rust boundaries"
+      "Comprehensive CRUD operations for test definitions, runs, executors, and suites",
+      "Multi-language test execution support (JavaScript, Python, Rust)",
+      "Organization-based multi-tenancy with user management",
+      "Dual storage modes: local storage and API backend",
+      "Monorepo architecture with shared TypeScript types",
+      "Type safety across TypeScript and Rust boundaries",
+      "Modern UI with Radix components and Tailwind CSS",
+      "Real-time test execution status tracking",
+      "Scalable executor management (local, Kubernetes, Docker)"
     ],
-    "inspiration": "Based on the open-source SparkTest project design principles"
+    "saas_features": [
+      "Organization-based tenant isolation",
+      "User authentication and authorization",
+      "Public/private test definition sharing",
+      "Multi-tenant resource management"
+    ],
+    "inspiration": "Based on the open-source SparkTest project design principles, enhanced for SaaS deployment"
   }
 }

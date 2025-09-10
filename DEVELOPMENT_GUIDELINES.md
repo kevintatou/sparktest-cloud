@@ -5,8 +5,10 @@ This document provides comprehensive guidelines for developing the SparkTest Saa
 ## Table of Contents
 
 - [Project Architecture](#project-architecture)
+- [Multi-Tenancy Model](#multi-tenancy-model)
 - [Coding Standards](#coding-standards)
 - [API Design](#api-design)
+- [Storage Architecture](#storage-architecture)
 - [Testing Guidelines](#testing-guidelines)
 - [Performance Guidelines](#performance-guidelines)
 - [Security Guidelines](#security-guidelines)
@@ -15,13 +17,13 @@ This document provides comprehensive guidelines for developing the SparkTest Saa
 
 ### Monorepo Structure
 
-Our project follows a monorepo pattern using pnpm workspaces:
+Our project follows a monorepo pattern using pnpm workspaces with SaaS multi-tenancy:
 
 ```
 sparktest-cloud/
 ├── apps/saas/
 │   ├── backend/          # Rust backend services
-│   │   ├── core/        # Database models and business logic
+│   │   ├── core/        # SaaS entities and business logic
 │   │   ├── api/         # REST API server (Axum)
 │   │   └── bin/         # Application binary
 │   └── frontend/        # Next.js application
@@ -29,9 +31,10 @@ sparktest-cloud/
 │       ├── src/components/ # React components
 │       └── src/lib/     # Utility functions
 ├── packages/
-│   ├── core/           # Shared TypeScript types
+│   ├── core/           # Shared TypeScript types and StorageService
 │   └── ui/             # Reusable UI components
-└── .mcp/               # Model Context Protocol configuration
+├── .mcp/               # Model Context Protocol configuration
+└── .github/            # GitHub Copilot instructions
 ```
 
 ### Technology Stack
@@ -41,13 +44,57 @@ sparktest-cloud/
 - **Framework**: Next.js 14 with App Router
 - **Language**: TypeScript 5+
 - **Styling**: Tailwind CSS
-- **UI Components**: Radix UI primitives
+- **UI Components**: Radix UI primitives (@radix-ui/*)
 - **Icons**: Lucide React
-- **State Management**: React state (future: Zustand for complex state)
+- **State Management**: React state with StorageService abstraction
+- **Storage Modes**: Local storage and API backend support
 
 #### Backend
 
 - **Language**: Rust 1.70+
+- **Framework**: Axum for HTTP server with CORS support
+- **Async Runtime**: Tokio
+- **Serialization**: Serde with JSON
+- **Database**: In-memory storage (current), PostgreSQL (planned)
+- **Error Handling**: anyhow with proper context
+- **Multi-tenancy**: Organization-based tenant isolation
+
+#### Shared
+
+- **Package Manager**: pnpm with workspaces
+- **Formatting**: Prettier (TS), rustfmt (Rust)
+- **Linting**: ESLint (TS), Clippy (Rust)
+- **Type Safety**: Consistent entity definitions across languages
+
+## Multi-Tenancy Model
+
+### Core Principles
+
+- **Organization-based tenancy**: Each organization is an isolated tenant
+- **User membership**: Users belong to organizations
+- **Resource isolation**: All SaaS entities include `user_id` and `organization_id`
+- **Public sharing**: Test definitions can be marked as public for cross-organization access
+
+### SaaS Entities
+
+All core entities have been enhanced with SaaS-specific fields:
+
+```rust
+// Example: SaasTestDefinition
+pub struct SaasTestDefinition {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub code: String,
+    pub language: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    // SaaS-specific fields
+    pub user_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
+    pub is_public: bool,
+}
+```
 - **Framework**: Axum for HTTP server
 - **Async Runtime**: Tokio
 - **Serialization**: Serde with JSON
