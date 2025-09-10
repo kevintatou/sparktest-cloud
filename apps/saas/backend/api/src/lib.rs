@@ -13,6 +13,36 @@ use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 use chrono::Utc;
 
+#[derive(Deserialize)]
+pub struct CreateTestDefinitionRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub code: String,
+    pub language: String,
+    pub is_public: bool,
+}
+
+#[derive(Deserialize)]
+pub struct CreateTestRunRequest {
+    pub definition_id: Uuid,
+    pub status: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateExecutorRequest {
+    pub name: String,
+    pub executor_type: String,
+    pub config: serde_json::Value,
+    pub status: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateTestSuiteRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub test_definitions: Vec<Uuid>,
+}
+
 pub type AppState = Arc<Database>;
 
 #[derive(Deserialize)]
@@ -88,14 +118,22 @@ async fn list_test_definitions(
 async fn create_test_definition(
     State(db): State<AppState>,
     Path(org_slug): Path<String>,
-    Json(mut definition): Json<SaasTestDefinition>,
+    Json(request): Json<CreateTestDefinitionRequest>,
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
     let org_id = get_org_context(&db, &org_slug).await?;
     
-    definition.id = Uuid::new_v4();
-    definition.created_at = Utc::now();
-    definition.updated_at = Utc::now();
-    definition.organization_id = Some(org_id);
+    let definition = SaasTestDefinition {
+        id: Uuid::new_v4(),
+        name: request.name,
+        description: request.description,
+        code: request.code,
+        language: request.language,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        user_id: None, // TODO: Get from auth context
+        organization_id: Some(org_id),
+        is_public: request.is_public,
+    };
 
     match db.create_test_definition(&definition).await {
         Ok(_) => Ok(Json(definition)),
@@ -156,7 +194,7 @@ async fn list_test_runs(
 async fn create_test_run(
     State(db): State<AppState>,
     Path(org_slug): Path<String>,
-    Json(mut run): Json<SaasTestRun>,
+    Json(request): Json<CreateTestRunRequest>,
 ) -> Result<Json<SaasTestRun>, StatusCode> {
     let org_id = get_org_context(&db, &org_slug).await?;
     
@@ -167,11 +205,17 @@ async fn create_test_run(
         _ => {}
     }
     
-    run.id = Uuid::new_v4();
-    run.created_at = Utc::now();
-    run.updated_at = Utc::now();
-    run.organization_id = Some(org_id);
-    run.status = "queued".to_string();
+    let run = SaasTestRun {
+        id: Uuid::new_v4(),
+        definition_id: request.definition_id,
+        status: request.status,
+        result: None,
+        error: None,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        user_id: None, // TODO: Get from auth context
+        organization_id: Some(org_id),
+    };
 
     match db.create_test_run(&run).await {
         Ok(_) => Ok(Json(run)),
@@ -206,13 +250,21 @@ async fn list_executors(
 async fn create_executor(
     State(db): State<AppState>,
     Path(org_slug): Path<String>,
-    Json(mut executor): Json<SaasExecutor>,
+    Json(request): Json<CreateExecutorRequest>,
 ) -> Result<Json<SaasExecutor>, StatusCode> {
     let org_id = get_org_context(&db, &org_slug).await?;
-    executor.id = Uuid::new_v4();
-    executor.created_at = Utc::now();
-    executor.updated_at = Utc::now();
-    executor.organization_id = Some(org_id);
+    
+    let executor = SaasExecutor {
+        id: Uuid::new_v4(),
+        name: request.name,
+        executor_type: request.executor_type,
+        config: request.config,
+        status: request.status,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        user_id: None, // TODO: Get from auth context
+        organization_id: Some(org_id),
+    };
     
     match db.create_executor(&executor).await {
         Ok(_) => Ok(Json(executor)),
@@ -267,13 +319,20 @@ async fn list_test_suites(
 async fn create_test_suite(
     State(db): State<AppState>,
     Path(org_slug): Path<String>,
-    Json(mut suite): Json<SaasTestSuite>,
+    Json(request): Json<CreateTestSuiteRequest>,
 ) -> Result<Json<SaasTestSuite>, StatusCode> {
     let org_id = get_org_context(&db, &org_slug).await?;
-    suite.id = Uuid::new_v4();
-    suite.created_at = Utc::now();
-    suite.updated_at = Utc::now();
-    suite.organization_id = Some(org_id);
+    
+    let suite = SaasTestSuite {
+        id: Uuid::new_v4(),
+        name: request.name,
+        description: request.description,
+        test_definitions: request.test_definitions,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        user_id: None, // TODO: Get from auth context
+        organization_id: Some(org_id),
+    };
     
     match db.create_test_suite(&suite).await {
         Ok(_) => Ok(Json(suite)),
