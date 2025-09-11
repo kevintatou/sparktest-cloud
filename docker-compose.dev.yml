@@ -1,0 +1,23 @@
+# Development environment overrides
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      target: base  # Use base stage for development
+    command: pnpm dev --filter @tatou/frontend
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:3000
+    ports:
+      - "3000:3000"
+
+  # Override nginx for development (optional)
+  nginx:
+    ports:
+      - "8080:80"  # Use different port to avoid conflicts
