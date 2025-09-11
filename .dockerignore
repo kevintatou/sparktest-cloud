@@ -1,0 +1,22 @@
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.override.yml
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# SSL certificates
+ssl/
+*.pem
+*.key
+
+# Deployment artifacts
+*.tar.gz
+deploy.log
+
+# Backup files
+*-backup.tar.gz
+app-data.tar.gz

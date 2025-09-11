@@ -16,6 +16,15 @@ target/
 .env.test.local
 .env.production.local
 
+# Deployment files
+*.tar.gz
+deploy.log
+ssl/
+*.pem
+*.key
+*-backup.tar.gz
+docker-compose.override.yml
+
 # IDE files
 .vscode/
 .idea/
