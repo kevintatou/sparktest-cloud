@@ -90,23 +90,37 @@ checklistItems.forEach(item => {
 
 console.log('\n');
 
-// Test 3: Simulate finding next issue after completion
-console.log('Test 3: Finding next issue after completion');
-function findNextIssue(checklistItems, completedIssueNumber) {
+// Test 3: Simulate finding next issue after completion and updating checklist
+console.log('Test 3: Finding next issue after completion and updating checklist');
+function findNextIssueAndUpdateChecklist(checklistItems, epicBody, completedIssueNumber) {
   let foundCompleted = false;
+  let updatedBody = epicBody;
   
   for (const item of checklistItems) {
     if (item.issueNumber === completedIssueNumber) {
       foundCompleted = true;
       console.log(`  ✅ Found completed issue #${completedIssueNumber}`);
+      
+      // Update the epic body to mark this item as checked
+      if (!item.checked) {
+        const checkedLine = item.line.replace(/^\s*-\s*\[\s*\]/, '- [x]');
+        updatedBody = updatedBody.replace(item.line, checkedLine);
+        console.log(`  📝 Marking issue #${completedIssueNumber} as completed in checklist`);
+      } else {
+        console.log(`  ⚠️  Issue #${completedIssueNumber} was already marked as completed`);
+      }
     } else if (!item.checked && item.issueNumber && foundCompleted) {
       console.log(`  ➡️  Next unchecked issue: #${item.issueNumber} - ${item.description}`);
-      return item.issueNumber;
+      return { nextIssue: item.issueNumber, updatedBody };
     }
   }
   
-  console.log(`  ❌ No next unchecked issue found after #${completedIssueNumber}`);
-  return null;
+  if (!foundCompleted) {
+    console.log(`  ❌ Issue #${completedIssueNumber} not found in checklist`);
+  } else {
+    console.log(`  ❌ No next unchecked issue found after #${completedIssueNumber}`);
+  }
+  return { nextIssue: null, updatedBody };
 }
 
 // Test scenarios
@@ -119,16 +133,41 @@ const testScenarios = [
 
 testScenarios.forEach(scenario => {
   console.log(`\n  Scenario: Issue #${scenario.completed} completed`);
-  const nextIssue = findNextIssue(checklistItems, scenario.completed);
-  const result = nextIssue === scenario.expected ? '✅ PASS' : '❌ FAIL';
-  console.log(`  Expected: #${scenario.expected}, Got: #${nextIssue} ${result}`);
+  const result = findNextIssueAndUpdateChecklist(checklistItems, testEpicBody, scenario.completed);
+  const nextIssue = result.nextIssue;
+  const testResult = nextIssue === scenario.expected ? '✅ PASS' : '❌ FAIL';
+  console.log(`  Expected: #${scenario.expected}, Got: #${nextIssue} ${testResult}`);
+  
+  // Show what the updated epic body would look like
+  if (result.updatedBody !== testEpicBody) {
+    console.log(`  📝 Epic body would be updated (issue #${scenario.completed} marked as completed)`);
+  }
 });
 
 console.log('\n🎉 Test completed!');
+
+// Test 4: Demonstrate checklist update functionality
+console.log('\nTest 4: Demonstrating checklist update functionality');
+console.log('Original epic body:');
+console.log('```');
+console.log(testEpicBody.split('\n').slice(4, 10).join('\n')); // Show just the checklist part
+console.log('```');
+
+const updateResult = findNextIssueAndUpdateChecklist(checklistItems, testEpicBody, 102);
+if (updateResult.updatedBody !== testEpicBody) {
+  console.log('\nUpdated epic body after completing issue #102:');
+  console.log('```');
+  console.log(updateResult.updatedBody.split('\n').slice(4, 10).join('\n')); // Show just the checklist part
+  console.log('```');
+  console.log(`✅ Issue #102 marked as completed, next issue #${updateResult.nextIssue} would be assigned`);
+} else {
+  console.log('\n❌ No changes made to epic body');
+}
 
 // Summary
 console.log('\n📋 Summary:');
 console.log('- extractClosedIssues(): Parses PR bodies for "Closes #123" patterns');
 console.log('- parseChecklistItems(): Extracts checklist items with issue numbers');
-console.log('- findNextIssue(): Finds next unchecked issue after a completed one');
-console.log('\nThe workflow will use these functions to automatically advance Copilot through epic checklists.');
+console.log('- findNextIssueAndUpdateChecklist(): Finds next unchecked issue and updates epic checklist');
+console.log('\nThe workflow will use these functions to automatically advance Copilot through epic checklists');
+console.log('and update the epic\'s markdown checklist to mark completed issues.');

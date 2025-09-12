@@ -18,9 +18,10 @@ Automatically advances Copilot through epic checklists when PRs are merged:
 2. Finds PRs associated with the successful workflow run
 3. Extracts closed issues from PR descriptions (supports `Closes #123`, `Fixes #123`, etc.)
 4. Finds epic issues (labeled `epic`) that contain the closed child issue
-5. Parses the epic's markdown checklist to find the next unchecked, open issue
-6. Assigns that issue to the Copilot agent
-7. Adds a comment for traceability
+5. **Updates the epic's checklist** to mark the completed issue as checked (`- [ ]` → `- [x]`)
+6. Parses the epic's markdown checklist to find the next unchecked, open issue
+7. Assigns that issue to the Copilot agent
+8. Adds a comment for traceability
 
 ### Configuration:
 - **Copilot Agent**: Set `COPILOT_AGENT_LOGIN` repository variable (defaults to `copilot-swe-agent`)
@@ -42,7 +43,15 @@ Automatically advances Copilot through epic checklists when PRs are merged:
 - [ ] #104 Implement 2FA
 ```
 
-When a PR is merged that closes issue #101, the workflow will automatically assign issue #102 to the Copilot agent.
+When a PR is merged that closes issue #101, the workflow will:
+1. **Automatically update the epic** to mark issue #101 as completed:
+   ```markdown
+   - [x] #101 Set up authentication service  ← Updated automatically
+   - [ ] #102 Create login UI               ← Next to be assigned
+   - [ ] #103 Add password reset functionality
+   - [ ] #104 Implement 2FA
+   ```
+2. **Assign issue #102** to the Copilot agent for the next task
 
 ### Requirements:
 - Merged PRs must include `Closes #<issue_number>` in their description

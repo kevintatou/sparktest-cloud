@@ -60,9 +60,10 @@ This PR fixes #123 and closes #456, resolves #789
 
 1. **Trigger**: Only runs when the CI workflow completes successfully
 2. **Scope**: Only processes merged PRs
-3. **Assignment**: Only assigns open, unchecked issues
-4. **Comments**: Adds traceability comment to assigned issues
-5. **Error Handling**: Continues processing even if individual issues fail
+3. **Epic Updates**: Automatically marks completed issues as checked in epic checklists
+4. **Assignment**: Only assigns open, unchecked issues
+5. **Comments**: Adds traceability comment to assigned issues
+6. **Error Handling**: Continues processing even if individual issues fail
 
 ## Troubleshooting
 

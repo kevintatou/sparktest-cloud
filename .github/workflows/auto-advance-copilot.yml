@@ -121,11 +121,19 @@ jobs:
               // Mark completed issue as checked and find next unchecked item
               let nextIssueNumber = null;
               let foundCompleted = false;
+              let updatedBody = body;
               
               for (const item of checklistItems) {
                 if (item.issueNumber === completedIssueNumber) {
                   foundCompleted = true;
                   console.log(`Found completed issue #${completedIssueNumber} in checklist`);
+                  
+                  // Update the epic body to mark this item as checked
+                  if (!item.checked) {
+                    const checkedLine = item.line.replace(/^\s*-\s*\[\s*\]/, '- [x]');
+                    updatedBody = updatedBody.replace(item.line, checkedLine);
+                    console.log(`Marking issue #${completedIssueNumber} as completed in epic checklist`);
+                  }
                 } else if (!item.checked && item.issueNumber && !foundCompleted) {
                   // This is an unchecked item before the completed one, skip
                   continue;
@@ -134,6 +142,17 @@ jobs:
                   nextIssueNumber = item.issueNumber;
                   break;
                 }
+              }
+              
+              // Update the epic issue body if it was modified
+              if (updatedBody !== body) {
+                console.log(`Updating epic #${epic.number} to mark completed issues`);
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: epic.number,
+                  body: updatedBody
+                });
               }
               
               if (!nextIssueNumber) {
