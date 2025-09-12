@@ -6,7 +6,6 @@ description = "API server for SparkTest SaaS"
 license = "MIT"
 
 [dependencies]
-core = "0.1.0"
 sparktest-saas-core = { path = "../core" }
 axum = "0.7"
 serde = { version = "1.0", features = ["derive"] }
