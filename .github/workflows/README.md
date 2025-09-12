@@ -58,3 +58,15 @@ When a PR is merged that closes issue #101, the workflow will:
 - Epic issues must be labeled with `epic`
 - Child issues must be referenced in the epic's checklist with `#<issue_number>`
 - Child issues must be open to be assigned
+
+## Testing
+
+See [TESTING.md](./TESTING.md) for comprehensive testing instructions, including:
+- Unit tests for core logic
+- Manual testing with dry-run mode
+- End-to-end test scenarios
+- Troubleshooting guide
+
+**Quick test**: Run `node .github/workflows/test-workflow-logic.js` to validate core functions.
+
+**Safe testing**: Use the manual workflow trigger with dry-run mode enabled to test without making actual changes.

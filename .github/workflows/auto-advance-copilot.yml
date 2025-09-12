@@ -5,11 +5,28 @@ on:
     workflows: ["CI"]
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run mode - log actions without making changes'
+        required: false
+        default: 'false'
+        type: boolean
+      test_pr_number:
+        description: 'PR number to test with (optional)'
+        required: false
+        type: string
+      test_commit_sha:
+        description: 'Commit SHA to test with (optional)'
+        required: false
+        type: string
 
 jobs:
   auto-advance:
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success'
+    if: >
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'workflow_dispatch'
     
     steps:
     - name: Checkout code
@@ -20,44 +37,102 @@ jobs:
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
-          const { data: workflowRun } = await github.rest.actions.getWorkflowRun({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            run_id: context.payload.workflow_run.id
-          });
+          // Configuration
+          const isDryRun = '${{ github.event.inputs.dry_run }}' === 'true';
+          const testPrNumber = '${{ github.event.inputs.test_pr_number }}';
+          const testCommitSha = '${{ github.event.inputs.test_commit_sha }}';
           
-          const headSha = workflowRun.head_sha;
-          console.log(`Workflow run completed for commit: ${headSha}`);
+          console.log(`🚀 Starting auto-advance workflow`);
+          console.log(`   Mode: ${isDryRun ? 'DRY RUN' : 'LIVE'}`);
+          console.log(`   Trigger: ${context.eventName}`);
           
-          // Find associated pull requests for this commit
-          const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            commit_sha: headSha
-          });
+          if (isDryRun) {
+            console.log(`⚠️  DRY RUN MODE: No actual changes will be made`);
+          }
           
-          console.log(`Found ${prs.length} PRs associated with commit ${headSha}`);
+          let headSha;
+          let prsToProcess = [];
           
-          for (const pr of prs) {
+          if (context.eventName === 'workflow_dispatch') {
+            // Manual trigger - use provided test data or find recent merged PRs
+            if (testCommitSha) {
+              headSha = testCommitSha;
+              console.log(`🧪 Using test commit SHA: ${headSha}`);
+            } else if (testPrNumber) {
+              console.log(`🧪 Using test PR number: ${testPrNumber}`);
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: parseInt(testPrNumber)
+              });
+              headSha = pr.head.sha;
+              prsToProcess = [pr];
+            } else {
+              // Find recent merged PRs for testing
+              console.log(`🧪 No test data provided, finding recent merged PRs`);
+              const { data: recentPrs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'closed',
+                sort: 'updated',
+                direction: 'desc',
+                per_page: 5
+              });
+              prsToProcess = recentPrs.filter(pr => pr.merged_at);
+              if (prsToProcess.length > 0) {
+                headSha = prsToProcess[0].head.sha;
+                console.log(`🧪 Found ${prsToProcess.length} recent merged PRs for testing`);
+              }
+            }
+          } else {
+            // Normal workflow_run trigger
+            const { data: workflowRun } = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id
+            });
+            headSha = workflowRun.head_sha;
+          }
+          
+          if (!headSha) {
+            console.log(`❌ No commit SHA found to process`);
+            return;
+          }
+          
+          console.log(`📝 Processing commit: ${headSha}`);
+          
+          // Find associated pull requests if not already provided
+          if (prsToProcess.length === 0) {
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: headSha
+            });
+            prsToProcess = prs;
+          }
+          
+          console.log(`📋 Found ${prsToProcess.length} PRs to process`);
+          
+          for (const pr of prsToProcess) {
             if (pr.state !== 'closed' || !pr.merged_at) {
-              console.log(`Skipping PR #${pr.number} - not merged`);
+              console.log(`⏭️  Skipping PR #${pr.number} - not merged`);
               continue;
             }
             
-            console.log(`Processing merged PR #${pr.number}: ${pr.title}`);
+            console.log(`🔍 Processing merged PR #${pr.number}: ${pr.title}`);
             
             // Extract closed issues from PR body
             const closedIssues = extractClosedIssues(pr.body || '');
-            console.log(`Found closed issues: ${closedIssues.join(', ')}`);
+            console.log(`📊 Found closed issues: [${closedIssues.join(', ')}]`);
             
             if (closedIssues.length === 0) {
-              console.log(`No closed issues found in PR #${pr.number}`);
+              console.log(`⚠️  No closed issues found in PR #${pr.number}`);
               continue;
             }
             
             // For each closed issue, find the epic that contains it
             for (const issueNumber of closedIssues) {
-              await processClosedIssue(github, context, issueNumber);
+              await processClosedIssue(github, context, issueNumber, isDryRun);
             }
           }
           
@@ -79,9 +154,9 @@ jobs:
           }
           
           // Process a closed issue to find its epic and advance to next child
-          async function processClosedIssue(github, context, issueNumber) {
+          async function processClosedIssue(github, context, issueNumber, isDryRun = false) {
             try {
-              console.log(`Processing closed issue #${issueNumber}`);
+              console.log(`🔍 Processing closed issue #${issueNumber}`);
               
               // Find epics that contain this issue number
               const epicLabel = '${{ vars.EPIC_LABEL || 'epic' }}';
@@ -93,30 +168,30 @@ jobs:
                 per_page: 100
               });
               
-              console.log(`Found ${allIssues.length} open epic issues`);
+              console.log(`📚 Found ${allIssues.length} open epic issues`);
               
               for (const epic of allIssues) {
                 const body = epic.body || '';
                 
                 // Check if this epic contains the closed issue number
                 if (body.includes(`#${issueNumber}`)) {
-                  console.log(`Found epic #${epic.number} containing issue #${issueNumber}`);
-                  await advanceEpic(github, context, epic, issueNumber);
+                  console.log(`📖 Found epic #${epic.number} containing issue #${issueNumber}`);
+                  await advanceEpic(github, context, epic, issueNumber, isDryRun);
                 }
               }
             } catch (error) {
-              console.error(`Error processing closed issue #${issueNumber}:`, error);
+              console.error(`❌ Error processing closed issue #${issueNumber}:`, error);
             }
           }
           
           // Advance the epic to the next unchecked child issue
-          async function advanceEpic(github, context, epic, completedIssueNumber) {
+          async function advanceEpic(github, context, epic, completedIssueNumber, isDryRun = false) {
             try {
               const body = epic.body || '';
               
               // Parse checklist items from the epic body
               const checklistItems = parseChecklistItems(body);
-              console.log(`Found ${checklistItems.length} checklist items in epic #${epic.number}`);
+              console.log(`📋 Found ${checklistItems.length} checklist items in epic #${epic.number}`);
               
               // Mark completed issue as checked and find next unchecked item
               let nextIssueNumber = null;
@@ -126,13 +201,15 @@ jobs:
               for (const item of checklistItems) {
                 if (item.issueNumber === completedIssueNumber) {
                   foundCompleted = true;
-                  console.log(`Found completed issue #${completedIssueNumber} in checklist`);
+                  console.log(`✅ Found completed issue #${completedIssueNumber} in checklist`);
                   
                   // Update the epic body to mark this item as checked
                   if (!item.checked) {
                     const checkedLine = item.line.replace(/^\s*-\s*\[\s*\]/, '- [x]');
                     updatedBody = updatedBody.replace(item.line, checkedLine);
-                    console.log(`Marking issue #${completedIssueNumber} as completed in epic checklist`);
+                    console.log(`📝 Marking issue #${completedIssueNumber} as completed in epic checklist`);
+                  } else {
+                    console.log(`⚠️  Issue #${completedIssueNumber} was already marked as completed`);
                   }
                 } else if (!item.checked && item.issueNumber && !foundCompleted) {
                   // This is an unchecked item before the completed one, skip
@@ -146,21 +223,33 @@ jobs:
               
               // Update the epic issue body if it was modified
               if (updatedBody !== body) {
-                console.log(`Updating epic #${epic.number} to mark completed issues`);
-                await github.rest.issues.update({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: epic.number,
-                  body: updatedBody
-                });
+                if (isDryRun) {
+                  console.log(`🔍 DRY RUN: Would update epic #${epic.number} to mark completed issues`);
+                  console.log(`📝 Changes to be made:`);
+                  const originalLines = body.split('\n');
+                  const updatedLines = updatedBody.split('\n');
+                  for (let i = 0; i < Math.max(originalLines.length, updatedLines.length); i++) {
+                    if (originalLines[i] !== updatedLines[i]) {
+                      console.log(`   - "${originalLines[i] || ''}" → "${updatedLines[i] || ''}"`);
+                    }
+                  }
+                } else {
+                  console.log(`📝 Updating epic #${epic.number} to mark completed issues`);
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: epic.number,
+                    body: updatedBody
+                  });
+                }
               }
               
               if (!nextIssueNumber) {
-                console.log(`No next unchecked issue found in epic #${epic.number}`);
+                console.log(`⏭️  No next unchecked issue found in epic #${epic.number}`);
                 return;
               }
               
-              console.log(`Next issue to assign: #${nextIssueNumber}`);
+              console.log(`🎯 Next issue to assign: #${nextIssueNumber}`);
               
               // Check if the next issue exists and is open
               try {
@@ -171,43 +260,44 @@ jobs:
                 });
                 
                 if (nextIssue.state !== 'open') {
-                  console.log(`Issue #${nextIssueNumber} is not open (state: ${nextIssue.state})`);
+                  console.log(`⚠️  Issue #${nextIssueNumber} is not open (state: ${nextIssue.state})`);
                   return;
                 }
                 
                 // Assign the issue to copilot-swe-agent
                 const copilotAgent = '${{ vars.COPILOT_AGENT_LOGIN || 'copilot-swe-agent' }}';
                 
-                await github.rest.issues.addAssignees({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: nextIssueNumber,
-                  assignees: [copilotAgent]
-                });
-                
-                // Add a comment to the issue
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: nextIssueNumber,
-                  body: `🤖 **Auto-assigned by Epic Advancement**
-
-This issue has been automatically assigned to @${copilotAgent} as the next task in epic #${epic.number}.
-
-**Previous completed issue:** #${completedIssueNumber}
-**Epic:** #${epic.number} - ${epic.title}
-
-This assignment was triggered by the successful completion of CI for the merged PR that closed issue #${completedIssueNumber}.`
-                });
-                
-                console.log(`✅ Successfully assigned issue #${nextIssueNumber} to ${copilotAgent}`);
+                if (isDryRun) {
+                  console.log(`🔍 DRY RUN: Would assign issue #${nextIssueNumber} to ${copilotAgent}`);
+                  console.log(`🔍 DRY RUN: Would add comment to issue #${nextIssueNumber}`);
+                  console.log(`📄 Comment content would be:`);
+                  const dryRunComment = `🤖 **Auto-assigned by Epic Advancement**\n\nThis issue has been automatically assigned to @${copilotAgent} as the next task in epic #${epic.number}.\n\n**Previous completed issue:** #${completedIssueNumber}\n**Epic:** #${epic.number} - ${epic.title}\n\nThis assignment was triggered by the successful completion of CI for the merged PR that closed issue #${completedIssueNumber}.`;
+                  console.log(dryRunComment);
+                } else {
+                  await github.rest.issues.addAssignees({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: nextIssueNumber,
+                    assignees: [copilotAgent]
+                  });
+                  
+                  // Add a comment to the issue
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: nextIssueNumber,
+                    body: `🤖 **Auto-assigned by Epic Advancement**\n\nThis issue has been automatically assigned to @${copilotAgent} as the next task in epic #${epic.number}.\n\n**Previous completed issue:** #${completedIssueNumber}\n**Epic:** #${epic.number} - ${epic.title}\n\nThis assignment was triggered by the successful completion of CI for the merged PR that closed issue #${completedIssueNumber}.`
+                  });
+                  
+                  console.log(`✅ Successfully assigned issue #${nextIssueNumber} to ${copilotAgent}`);
+                }
                 
               } catch (error) {
-                console.error(`Error checking/assigning issue #${nextIssueNumber}:`, error);
+                console.error(`❌ Error checking/assigning issue #${nextIssueNumber}:`, error);
               }
               
             } catch (error) {
-              console.error(`Error advancing epic #${epic.number}:`, error);
+              console.error(`❌ Error advancing epic #${epic.number}:`, error);
             }
           }
           
