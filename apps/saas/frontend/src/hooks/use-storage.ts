@@ -1,7 +1,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Definition, Run, Executor, Suite, LocalStorageService } from '@tatou/core';
+import { Definition, Run, Executor, Suite, LocalStorageService, ApiStorageService, StorageService, defaultConfig } from '@tatou/core';
+
+function createStorageService(): StorageService {
+  // For now, we'll start with localStorage and add API later
+  // In the future, this could read from config or environment
+  const config = defaultConfig;
+  
+  if (typeof window === 'undefined') {
+    // Server-side rendering - use a no-op service
+    return new LocalStorageService();
+  }
+  
+  if (config.storage_mode === 'api') {
+    return new ApiStorageService(config.backend_url);
+  } else {
+    return new LocalStorageService();
+  }
+}
 
 export function useStorage() {
   const [definitions, setDefinitions] = useState<Definition[]>([]);
@@ -11,7 +28,7 @@ export function useStorage() {
   const [loading, setLoading] = useState(true);
 
   // Initialize storage service
-  const storageService = new LocalStorageService();
+  const storageService = createStorageService();
 
   // Load data from storage on mount
   useEffect(() => {
@@ -30,12 +47,16 @@ export function useStorage() {
         setExecutors(execs);
         setSuites(suites);
 
-        // If no data exists, populate with sample data
-        if (definitions.length === 0) {
+        // If no data exists and we're using localStorage, populate with sample data
+        if (definitions.length === 0 && storageService instanceof LocalStorageService) {
           await initializeSampleData();
         }
       } catch (error) {
         console.error('Failed to load data:', error);
+        // If API fails, try to fallback to sample data for demo purposes
+        if (storageService instanceof ApiStorageService) {
+          await initializeSampleData();
+        }
       } finally {
         setLoading(false);
       }
@@ -333,21 +354,36 @@ export function useStorage() {
   };
 
   const deleteRun = async (id: string) => {
-    // Note: Storage service doesn't have deleteTestRun method, 
-    // so we'll just remove from local state for now
-    setRuns(prev => prev.filter(r => r.id !== id));
+    try {
+      await storageService.deleteTestRun(id);
+      setRuns(prev => prev.filter(r => r.id !== id));
+    } catch (error) {
+      console.error('Failed to delete run:', error);
+      // Fallback to local state removal
+      setRuns(prev => prev.filter(r => r.id !== id));
+    }
   };
 
   const deleteExecutor = async (id: string) => {
-    // Note: Storage service doesn't have deleteExecutor method,
-    // so we'll just remove from local state for now
-    setExecutors(prev => prev.filter(e => e.id !== id));
+    try {
+      await storageService.deleteExecutor(id);
+      setExecutors(prev => prev.filter(e => e.id !== id));
+    } catch (error) {
+      console.error('Failed to delete executor:', error);
+      // Fallback to local state removal
+      setExecutors(prev => prev.filter(e => e.id !== id));
+    }
   };
 
   const deleteSuite = async (id: string) => {
-    // Note: Storage service doesn't have deleteTestSuite method,
-    // so we'll just remove from local state for now
-    setSuites(prev => prev.filter(s => s.id !== id));
+    try {
+      await storageService.deleteTestSuite(id);
+      setSuites(prev => prev.filter(s => s.id !== id));
+    } catch (error) {
+      console.error('Failed to delete suite:', error);
+      // Fallback to local state removal
+      setSuites(prev => prev.filter(s => s.id !== id));
+    }
   };
 
   return {
