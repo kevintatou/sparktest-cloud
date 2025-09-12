@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Definition, Executor, Suite } from '@tatou/core';
 import { CreateTestDialog } from '@/components/create-test-dialog';
 import { CreateExecutorDialog } from '@/components/create-executor-dialog';
@@ -9,7 +9,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/hooks/use-toast';
 import { useStorage } from '@/hooks/use-storage';
 import { cn } from '@/lib/utils';
-import { Zap, Database } from 'lucide-react';
+import { Zap, Database, Menu } from 'lucide-react';
 
 import { Navigation, NavigationKey } from '@/components/dashboard/navigation';
 import { Dashboard } from '@/components/dashboard/dashboard';
@@ -18,7 +18,7 @@ import { SaasSections } from '@/components/dashboard/saas-sections';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<NavigationKey>('dashboard');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Start closed on initial load
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showCreateExecutorDialog, setShowCreateExecutorDialog] = useState(false);
@@ -45,6 +45,24 @@ export default function Home() {
     deleteExecutor,
     deleteSuite,
   } = useStorage();
+
+  // Initialize sidebar state based on screen size
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true); // Always open on desktop
+      } else {
+        setSidebarOpen(false); // Always closed on mobile initially
+      }
+    };
+
+    // Set initial state
+    handleResize();
+    
+    // Listen for resize events
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleCreateDefinition = async (testData: Omit<Definition, 'id' | 'createdAt'>) => {
     try {
@@ -217,6 +235,15 @@ export default function Home() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
+              {/* Hamburger Menu Button for Mobile */}
+              <button
+                className="lg:hidden p-2 hover:bg-muted rounded-lg transition-colors"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                aria-label="Toggle sidebar"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              
               <div className="relative">
                 <div className="p-2 bg-muted/50 rounded-lg border">
                   <Zap className="h-6 w-6 text-primary" />
