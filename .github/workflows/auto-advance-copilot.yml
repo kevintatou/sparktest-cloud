@@ -84,10 +84,11 @@ jobs:
               console.log(`Processing closed issue #${issueNumber}`);
               
               // Find epics that contain this issue number
+              const epicLabel = '${{ vars.EPIC_LABEL || 'epic' }}';
               const { data: allIssues } = await github.rest.issues.listForRepo({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                labels: 'epic',
+                labels: epicLabel,
                 state: 'open',
                 per_page: 100
               });
@@ -157,6 +158,7 @@ jobs:
                 
                 // Assign the issue to copilot-swe-agent
                 const copilotAgent = '${{ vars.COPILOT_AGENT_LOGIN || 'copilot-swe-agent' }}';
+                
                 await github.rest.issues.addAssignees({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
