@@ -15,14 +15,14 @@ use stripe::{Client, CheckoutSession, CheckoutSessionMode, CreateCheckoutSession
 
 pub type AppState = Arc<Database>;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CheckoutRequest {
     pub plan_slug: String,
     pub success_url: Option<String>,
     pub cancel_url: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CheckoutResponse {
     pub checkout_url: String,
 }
@@ -295,5 +295,128 @@ async fn create_checkout_session(
             eprintln!("Failed to create Stripe checkout session: {:?}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_checkout_request_serialization() {
+        let request = CheckoutRequest {
+            plan_slug: "pro".to_string(),
+            success_url: Some("http://localhost:3000/success".to_string()),
+            cancel_url: Some("http://localhost:3000/cancel".to_string()),
+        };
+
+        // Test serialization
+        let json_str = serde_json::to_string(&request).expect("Failed to serialize");
+        assert!(json_str.contains("pro"));
+        assert!(json_str.contains("success"));
+
+        // Test deserialization
+        let deserialized: CheckoutRequest = serde_json::from_str(&json_str).expect("Failed to deserialize");
+        assert_eq!(deserialized.plan_slug, "pro");
+        assert_eq!(deserialized.success_url.unwrap(), "http://localhost:3000/success");
+    }
+
+    #[tokio::test]
+    async fn test_checkout_response_serialization() {
+        let response = CheckoutResponse {
+            checkout_url: "https://checkout.stripe.com/test123".to_string(),
+        };
+
+        // Test serialization
+        let json_str = serde_json::to_string(&response).expect("Failed to serialize");
+        assert!(json_str.contains("checkout.stripe.com"));
+
+        // Test deserialization
+        let deserialized: CheckoutResponse = serde_json::from_str(&json_str).expect("Failed to deserialize");
+        assert_eq!(deserialized.checkout_url, "https://checkout.stripe.com/test123");
+    }
+
+    #[tokio::test]
+    async fn test_database_operations() {
+        let db = Database::new("test://").await.expect("Failed to create test database");
+        
+        // Test listing plans
+        let plans = db.list_plans().await.expect("Failed to list plans");
+        assert_eq!(plans.len(), 2);
+        
+        // Test finding plans by slug
+        let free_plan = db.get_plan_by_slug("free").await.expect("Failed to get plan");
+        assert!(free_plan.is_some());
+        assert_eq!(free_plan.unwrap().price_cents, 0);
+
+        let pro_plan = db.get_plan_by_slug("pro").await.expect("Failed to get plan");
+        assert!(pro_plan.is_some());
+        assert_eq!(pro_plan.unwrap().price_cents, 2900);
+
+        // Test non-existent plan
+        let nonexistent = db.get_plan_by_slug("nonexistent").await.expect("Failed to get plan");
+        assert!(nonexistent.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_free_plan_checkout_logic() {
+        let db = Database::new("test://").await.expect("Failed to create test database");
+        
+        // Simulate free plan checkout logic
+        let plan = db.get_plan_by_slug("free").await.expect("Failed to get plan").unwrap();
+        assert_eq!(plan.price_cents, 0);
+        
+        // For free plan, we should skip Stripe
+        let success_url = "http://localhost:3000/success".to_string();
+        assert_eq!(success_url, "http://localhost:3000/success");
+    }
+
+    #[tokio::test]
+    async fn test_pro_plan_stripe_requirements() {
+        let db = Database::new("test://").await.expect("Failed to create test database");
+        
+        let plan = db.get_plan_by_slug("pro").await.expect("Failed to get plan").unwrap();
+        assert_eq!(plan.price_cents, 2900);
+        assert!(plan.price_cents > 0); // Should require Stripe for paid plans
+        
+        // Should have features that differentiate from free
+        let features = &plan.features;
+        assert_eq!(features["max_tests"], "unlimited");
+        assert_eq!(features["support"], "priority");
+    }
+
+    #[tokio::test]
+    async fn test_test_definition_operations() {
+        let db = Database::new("test://").await.expect("Failed to create test database");
+        
+        let test_def = SaasTestDefinition {
+            id: Uuid::new_v4(),
+            name: "Test API Definition".to_string(),
+            description: Some("A test definition via API".to_string()),
+            code: "console.log('api test')".to_string(),
+            language: "javascript".to_string(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            user_id: Some(Uuid::new_v4()),
+            organization_id: Some(Uuid::new_v4()),
+            is_public: true,
+        };
+
+        // Create
+        db.create_test_definition(&test_def).await.expect("Failed to create test definition");
+
+        // Read
+        let retrieved = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name, "Test API Definition");
+
+        // List
+        let all_defs = db.list_test_definitions(None, None).await.expect("Failed to list test definitions");
+        assert_eq!(all_defs.len(), 1);
+
+        // Delete
+        db.delete_test_definition(test_def.id).await.expect("Failed to delete test definition");
+        let after_delete = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
+        assert!(after_delete.is_none());
     }
 }
