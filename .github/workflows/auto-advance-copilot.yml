@@ -1,0 +1,213 @@
+name: Auto-advance Copilot on Epic
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+jobs:
+  auto-advance:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Auto-advance Copilot on Epic Child Issues
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const { data: workflowRun } = await github.rest.actions.getWorkflowRun({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            run_id: context.payload.workflow_run.id
+          });
+          
+          const headSha = workflowRun.head_sha;
+          console.log(`Workflow run completed for commit: ${headSha}`);
+          
+          // Find associated pull requests for this commit
+          const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            commit_sha: headSha
+          });
+          
+          console.log(`Found ${prs.length} PRs associated with commit ${headSha}`);
+          
+          for (const pr of prs) {
+            if (pr.state !== 'closed' || !pr.merged_at) {
+              console.log(`Skipping PR #${pr.number} - not merged`);
+              continue;
+            }
+            
+            console.log(`Processing merged PR #${pr.number}: ${pr.title}`);
+            
+            // Extract closed issues from PR body
+            const closedIssues = extractClosedIssues(pr.body || '');
+            console.log(`Found closed issues: ${closedIssues.join(', ')}`);
+            
+            if (closedIssues.length === 0) {
+              console.log(`No closed issues found in PR #${pr.number}`);
+              continue;
+            }
+            
+            // For each closed issue, find the epic that contains it
+            for (const issueNumber of closedIssues) {
+              await processClosedIssue(github, context, issueNumber);
+            }
+          }
+          
+          // Helper function to extract issue numbers from "Closes #123" patterns
+          function extractClosedIssues(prBody) {
+            const patterns = [
+              /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*#(\d+)/gi,
+              /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:https?:\/\/github\.com\/[^\/]+\/[^\/]+\/issues\/)?(\d+)/gi
+            ];
+            
+            const issues = new Set();
+            for (const pattern of patterns) {
+              let match;
+              while ((match = pattern.exec(prBody)) !== null) {
+                issues.add(parseInt(match[1]));
+              }
+            }
+            return Array.from(issues);
+          }
+          
+          // Process a closed issue to find its epic and advance to next child
+          async function processClosedIssue(github, context, issueNumber) {
+            try {
+              console.log(`Processing closed issue #${issueNumber}`);
+              
+              // Find epics that contain this issue number
+              const { data: allIssues } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: 'epic',
+                state: 'open',
+                per_page: 100
+              });
+              
+              console.log(`Found ${allIssues.length} open epic issues`);
+              
+              for (const epic of allIssues) {
+                const body = epic.body || '';
+                
+                // Check if this epic contains the closed issue number
+                if (body.includes(`#${issueNumber}`)) {
+                  console.log(`Found epic #${epic.number} containing issue #${issueNumber}`);
+                  await advanceEpic(github, context, epic, issueNumber);
+                }
+              }
+            } catch (error) {
+              console.error(`Error processing closed issue #${issueNumber}:`, error);
+            }
+          }
+          
+          // Advance the epic to the next unchecked child issue
+          async function advanceEpic(github, context, epic, completedIssueNumber) {
+            try {
+              const body = epic.body || '';
+              
+              // Parse checklist items from the epic body
+              const checklistItems = parseChecklistItems(body);
+              console.log(`Found ${checklistItems.length} checklist items in epic #${epic.number}`);
+              
+              // Mark completed issue as checked and find next unchecked item
+              let nextIssueNumber = null;
+              let foundCompleted = false;
+              
+              for (const item of checklistItems) {
+                if (item.issueNumber === completedIssueNumber) {
+                  foundCompleted = true;
+                  console.log(`Found completed issue #${completedIssueNumber} in checklist`);
+                } else if (!item.checked && item.issueNumber && !foundCompleted) {
+                  // This is an unchecked item before the completed one, skip
+                  continue;
+                } else if (!item.checked && item.issueNumber && foundCompleted) {
+                  // This is the next unchecked item after the completed one
+                  nextIssueNumber = item.issueNumber;
+                  break;
+                }
+              }
+              
+              if (!nextIssueNumber) {
+                console.log(`No next unchecked issue found in epic #${epic.number}`);
+                return;
+              }
+              
+              console.log(`Next issue to assign: #${nextIssueNumber}`);
+              
+              // Check if the next issue exists and is open
+              try {
+                const { data: nextIssue } = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: nextIssueNumber
+                });
+                
+                if (nextIssue.state !== 'open') {
+                  console.log(`Issue #${nextIssueNumber} is not open (state: ${nextIssue.state})`);
+                  return;
+                }
+                
+                // Assign the issue to copilot-swe-agent
+                const copilotAgent = '${{ vars.COPILOT_AGENT_LOGIN || 'copilot-swe-agent' }}';
+                await github.rest.issues.addAssignees({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: nextIssueNumber,
+                  assignees: [copilotAgent]
+                });
+                
+                // Add a comment to the issue
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: nextIssueNumber,
+                  body: `🤖 **Auto-assigned by Epic Advancement**
+
+This issue has been automatically assigned to @${copilotAgent} as the next task in epic #${epic.number}.
+
+**Previous completed issue:** #${completedIssueNumber}
+**Epic:** #${epic.number} - ${epic.title}
+
+This assignment was triggered by the successful completion of CI for the merged PR that closed issue #${completedIssueNumber}.`
+                });
+                
+                console.log(`✅ Successfully assigned issue #${nextIssueNumber} to ${copilotAgent}`);
+                
+              } catch (error) {
+                console.error(`Error checking/assigning issue #${nextIssueNumber}:`, error);
+              }
+              
+            } catch (error) {
+              console.error(`Error advancing epic #${epic.number}:`, error);
+            }
+          }
+          
+          // Parse checklist items from markdown body
+          function parseChecklistItems(body) {
+            const lines = body.split('\n');
+            const items = [];
+            
+            for (const line of lines) {
+              // Match checklist items like "- [ ] #123 Description" or "- [x] #123 Description"
+              const match = line.match(/^\s*-\s*\[([x\s])\]\s*#?(\d+)(?:\s+(.*))?/i);
+              if (match) {
+                const [, checkStatus, issueNum, description] = match;
+                items.push({
+                  checked: checkStatus.toLowerCase() === 'x',
+                  issueNumber: parseInt(issueNum),
+                  description: (description || '').trim(),
+                  line: line.trim()
+                });
+              }
+            }
+            
+            return items;
+          }
