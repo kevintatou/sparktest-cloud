@@ -1,17 +1,31 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Json, Router,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sparktest_saas_core::{Database, SaasTestDefinition, SaasTestRun, SaasExecutor, SaasTestSuite};
+use sparktest_saas_core::{Database, SaasTestDefinition, SaasTestRun, Plan};
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 use chrono::Utc;
+use stripe::{Client, CheckoutSession, CheckoutSessionMode, CreateCheckoutSession, CreateCheckoutSessionLineItems};
 
 pub type AppState = Arc<Database>;
+
+#[derive(Debug, Deserialize)]
+pub struct CheckoutRequest {
+    pub plan_slug: String,
+    pub success_url: Option<String>,
+    pub cancel_url: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CheckoutResponse {
+    pub checkout_url: String,
+}
 
 pub fn create_app(database: Database) -> Router {
     let state = Arc::new(database);
@@ -30,6 +44,9 @@ pub fn create_app(database: Database) -> Router {
         // Test Suites
         .route("/api/test-suites", get(list_test_suites).post(create_test_suite))
         .route("/api/test-suites/:id", get(get_test_suite).put(update_test_suite).delete(delete_test_suite))
+        // Billing
+        .route("/api/billing/plans", get(list_plans))
+        .route("/api/billing/checkout", post(create_checkout_session))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -72,7 +89,7 @@ async fn get_test_definition(
 }
 
 async fn update_test_definition(
-    State(db): State<AppState>,
+    State(_db): State<AppState>,
     Path(id): Path<Uuid>,
     Json(mut definition): Json<SaasTestDefinition>,
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
@@ -200,4 +217,83 @@ async fn delete_test_suite(
 ) -> Result<StatusCode, StatusCode> {
     // Placeholder implementation
     Ok(StatusCode::NO_CONTENT)
+}
+
+// Billing handlers
+async fn list_plans(State(db): State<AppState>) -> Result<Json<Vec<Plan>>, StatusCode> {
+    match db.list_plans().await {
+        Ok(plans) => Ok(Json(plans)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+async fn create_checkout_session(
+    State(db): State<AppState>,
+    Json(request): Json<CheckoutRequest>,
+) -> Result<Json<CheckoutResponse>, StatusCode> {
+    // Get the plan
+    let plan = match db.get_plan_by_slug(&request.plan_slug).await {
+        Ok(Some(plan)) => plan,
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    // Skip Stripe integration for free plan
+    if plan.price_cents == 0 {
+        let success_url = request.success_url.unwrap_or_else(|| "http://localhost:3000".to_string());
+        return Ok(Json(CheckoutResponse {
+            checkout_url: success_url,
+        }));
+    }
+
+    // Get Stripe configuration
+    let stripe_secret_key = match std::env::var("STRIPE_SECRET_KEY") {
+        Ok(key) => key,
+        Err(_) => {
+            eprintln!("STRIPE_SECRET_KEY environment variable not set");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    let stripe_price_id = match &plan.stripe_price_id {
+        Some(id) => id.clone(),
+        None => {
+            eprintln!("No Stripe price ID configured for plan: {}", plan.slug);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    // Create Stripe client
+    let client = Client::new(stripe_secret_key);
+
+    // Create checkout session
+    let success_url = request.success_url.unwrap_or_else(|| "http://localhost:3000?session_id={CHECKOUT_SESSION_ID}".to_string());
+    let cancel_url = request.cancel_url.unwrap_or_else(|| "http://localhost:3000".to_string());
+
+    let mut create_session = CreateCheckoutSession::new();
+    create_session.mode = Some(CheckoutSessionMode::Subscription);
+    create_session.success_url = Some(&success_url);
+    create_session.cancel_url = Some(&cancel_url);
+    create_session.line_items = Some(vec![CreateCheckoutSessionLineItems {
+        price: Some(stripe_price_id),
+        quantity: Some(1),
+        ..Default::default()
+    }]);
+
+    match CheckoutSession::create(&client, create_session).await {
+        Ok(session) => {
+            if let Some(url) = session.url {
+                Ok(Json(CheckoutResponse {
+                    checkout_url: url,
+                }))
+            } else {
+                eprintln!("Stripe checkout session created but no URL returned");
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to create Stripe checkout session: {:?}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }

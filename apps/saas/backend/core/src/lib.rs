@@ -77,20 +77,76 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Plan {
+    pub id: Uuid,
+    pub slug: String,
+    pub price_cents: i32,
+    pub features: serde_json::Value,
+    pub stripe_price_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 // Simplified database operations (placeholder implementation)
 pub struct Database {
     // For now, use in-memory storage
     test_definitions: std::sync::Arc<std::sync::Mutex<Vec<SaasTestDefinition>>>,
     test_runs: std::sync::Arc<std::sync::Mutex<Vec<SaasTestRun>>>,
+    plans: std::sync::Arc<std::sync::Mutex<Vec<Plan>>>,
 }
 
 impl Database {
     pub async fn new(_database_url: &str) -> Result<Self, anyhow::Error> {
         // Placeholder implementation - in production this would connect to PostgreSQL
-        Ok(Self {
+        let db = Self {
             test_definitions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             test_runs: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
-        })
+            plans: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        };
+        
+        // Initialize with default plans
+        db.init_default_plans().await?;
+        
+        Ok(db)
+    }
+
+    async fn init_default_plans(&self) -> Result<(), anyhow::Error> {
+        let mut plans = self.plans.lock().unwrap();
+        
+        // Free plan
+        plans.push(Plan {
+            id: Uuid::new_v4(),
+            slug: "free".to_string(),
+            price_cents: 0,
+            features: serde_json::json!({
+                "max_tests": 5,
+                "max_runs_per_month": 100,
+                "support": "community"
+            }),
+            stripe_price_id: std::env::var("STRIPE_FREE_PRICE_ID").ok(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        });
+
+        // Pro plan
+        plans.push(Plan {
+            id: Uuid::new_v4(),
+            slug: "pro".to_string(),
+            price_cents: 2900, // $29.00
+            features: serde_json::json!({
+                "max_tests": "unlimited",
+                "max_runs_per_month": "unlimited",
+                "support": "priority",
+                "advanced_analytics": true,
+                "team_collaboration": true
+            }),
+            stripe_price_id: std::env::var("STRIPE_PRO_PRICE_ID").ok(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        });
+
+        Ok(())
     }
 
     // Test Definition CRUD
@@ -131,5 +187,16 @@ impl Database {
     pub async fn get_test_run(&self, id: Uuid) -> Result<Option<SaasTestRun>, anyhow::Error> {
         let runs = self.test_runs.lock().unwrap();
         Ok(runs.iter().find(|r| r.id == id).cloned())
+    }
+
+    // Plan CRUD
+    pub async fn list_plans(&self) -> Result<Vec<Plan>, anyhow::Error> {
+        let plans = self.plans.lock().unwrap();
+        Ok(plans.clone())
+    }
+
+    pub async fn get_plan_by_slug(&self, slug: &str) -> Result<Option<Plan>, anyhow::Error> {
+        let plans = self.plans.lock().unwrap();
+        Ok(plans.iter().find(|p| p.slug == slug).cloned())
     }
 }
