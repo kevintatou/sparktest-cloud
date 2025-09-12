@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { 
@@ -59,6 +60,23 @@ const navigationGroups = [
   }
 ];
 
+// Custom hook for responsive behavior
+function useIsLargeScreen() {
+  const [isLargeScreen, setIsLargeScreen] = useState(true);
+
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsLargeScreen(window.innerWidth >= 1024);
+    };
+
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
+
+  return isLargeScreen;
+}
+
 export const Navigation: React.FC<NavigationProps> = ({
   activeTab,
   setActiveTab,
@@ -66,6 +84,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   setSidebarCollapsed,
   setSidebarOpen,
 }) => {
+  const isLargeScreen = useIsLargeScreen();
   return (
     <>
       <div className="flex-1 overflow-y-auto py-6">
@@ -83,7 +102,10 @@ export const Navigation: React.FC<NavigationProps> = ({
                     key={key}
                     onClick={() => {
                       setActiveTab(key as NavigationKey);
-                      if (window.innerWidth < 1024) setSidebarOpen(false);
+                      // Close sidebar on mobile after navigation
+                      if (!isLargeScreen) {
+                        setSidebarOpen(false);
+                      }
                     }}
                     className={cn(
                       "group flex items-center w-full rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer",
@@ -124,7 +146,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           onClick={() => {
             setSidebarCollapsed(!sidebarCollapsed);
             // On mobile, also close the sidebar when collapsing
-            if (window.innerWidth < 1024 && !sidebarCollapsed) {
+            if (!isLargeScreen && !sidebarCollapsed) {
               setSidebarOpen(false);
             }
           }}
