@@ -63,6 +63,7 @@ pub struct SaasTestSuite {
 pub struct Organization {
     pub id: Uuid,
     pub name: String,
+    pub stripe_customer_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -88,12 +89,26 @@ pub struct Plan {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrgSubscription {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub stripe_subscription_id: String,
+    pub status: String, // active, past_due, canceled, etc.
+    pub current_period_end: DateTime<Utc>,
+    pub plan_id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 // Simplified database operations (placeholder implementation)
 pub struct Database {
     // For now, use in-memory storage
     test_definitions: std::sync::Arc<std::sync::Mutex<Vec<SaasTestDefinition>>>,
     test_runs: std::sync::Arc<std::sync::Mutex<Vec<SaasTestRun>>>,
     plans: std::sync::Arc<std::sync::Mutex<Vec<Plan>>>,
+    organizations: std::sync::Arc<std::sync::Mutex<Vec<Organization>>>,
+    subscriptions: std::sync::Arc<std::sync::Mutex<Vec<OrgSubscription>>>,
 }
 
 impl Database {
@@ -103,6 +118,8 @@ impl Database {
             test_definitions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             test_runs: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             plans: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            organizations: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            subscriptions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
         };
         
         // Initialize with default plans
@@ -198,6 +215,56 @@ impl Database {
     pub async fn get_plan_by_slug(&self, slug: &str) -> Result<Option<Plan>, anyhow::Error> {
         let plans = self.plans.lock().unwrap();
         Ok(plans.iter().find(|p| p.slug == slug).cloned())
+    }
+
+    // Organization CRUD
+    pub async fn create_organization(&self, organization: &Organization) -> Result<(), anyhow::Error> {
+        let mut orgs = self.organizations.lock().unwrap();
+        orgs.push(organization.clone());
+        Ok(())
+    }
+
+    pub async fn get_organization_by_id(&self, id: Uuid) -> Result<Option<Organization>, anyhow::Error> {
+        let orgs = self.organizations.lock().unwrap();
+        Ok(orgs.iter().find(|o| o.id == id).cloned())
+    }
+
+    pub async fn get_organization_by_stripe_customer_id(&self, stripe_customer_id: &str) -> Result<Option<Organization>, anyhow::Error> {
+        let orgs = self.organizations.lock().unwrap();
+        Ok(orgs.iter().find(|o| o.stripe_customer_id.as_ref() == Some(&stripe_customer_id.to_string())).cloned())
+    }
+
+    pub async fn update_organization(&self, organization: &Organization) -> Result<(), anyhow::Error> {
+        let mut orgs = self.organizations.lock().unwrap();
+        if let Some(pos) = orgs.iter().position(|o| o.id == organization.id) {
+            orgs[pos] = organization.clone();
+        }
+        Ok(())
+    }
+
+    // Subscription CRUD
+    pub async fn create_subscription(&self, subscription: &OrgSubscription) -> Result<(), anyhow::Error> {
+        let mut subs = self.subscriptions.lock().unwrap();
+        subs.push(subscription.clone());
+        Ok(())
+    }
+
+    pub async fn get_subscription_by_stripe_id(&self, stripe_subscription_id: &str) -> Result<Option<OrgSubscription>, anyhow::Error> {
+        let subs = self.subscriptions.lock().unwrap();
+        Ok(subs.iter().find(|s| s.stripe_subscription_id == stripe_subscription_id).cloned())
+    }
+
+    pub async fn get_subscription_by_organization_id(&self, organization_id: Uuid) -> Result<Option<OrgSubscription>, anyhow::Error> {
+        let subs = self.subscriptions.lock().unwrap();
+        Ok(subs.iter().find(|s| s.organization_id == organization_id).cloned())
+    }
+
+    pub async fn update_subscription(&self, subscription: &OrgSubscription) -> Result<(), anyhow::Error> {
+        let mut subs = self.subscriptions.lock().unwrap();
+        if let Some(pos) = subs.iter().position(|s| s.id == subscription.id) {
+            subs[pos] = subscription.clone();
+        }
+        Ok(())
     }
 }
 
