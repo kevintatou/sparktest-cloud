@@ -77,20 +77,76 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Plan {
+    pub id: Uuid,
+    pub slug: String,
+    pub price_cents: i32,
+    pub features: serde_json::Value,
+    pub stripe_price_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 // Simplified database operations (placeholder implementation)
 pub struct Database {
     // For now, use in-memory storage
     test_definitions: std::sync::Arc<std::sync::Mutex<Vec<SaasTestDefinition>>>,
     test_runs: std::sync::Arc<std::sync::Mutex<Vec<SaasTestRun>>>,
+    plans: std::sync::Arc<std::sync::Mutex<Vec<Plan>>>,
 }
 
 impl Database {
     pub async fn new(_database_url: &str) -> Result<Self, anyhow::Error> {
         // Placeholder implementation - in production this would connect to PostgreSQL
-        Ok(Self {
+        let db = Self {
             test_definitions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             test_runs: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
-        })
+            plans: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        };
+        
+        // Initialize with default plans
+        db.init_default_plans().await?;
+        
+        Ok(db)
+    }
+
+    async fn init_default_plans(&self) -> Result<(), anyhow::Error> {
+        let mut plans = self.plans.lock().unwrap();
+        
+        // Free plan
+        plans.push(Plan {
+            id: Uuid::new_v4(),
+            slug: "free".to_string(),
+            price_cents: 0,
+            features: serde_json::json!({
+                "max_tests": 5,
+                "max_runs_per_month": 100,
+                "support": "community"
+            }),
+            stripe_price_id: std::env::var("STRIPE_FREE_PRICE_ID").ok(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        });
+
+        // Pro plan
+        plans.push(Plan {
+            id: Uuid::new_v4(),
+            slug: "pro".to_string(),
+            price_cents: 2900, // $29.00
+            features: serde_json::json!({
+                "max_tests": "unlimited",
+                "max_runs_per_month": "unlimited",
+                "support": "priority",
+                "advanced_analytics": true,
+                "team_collaboration": true
+            }),
+            stripe_price_id: std::env::var("STRIPE_PRO_PRICE_ID").ok(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        });
+
+        Ok(())
     }
 
     // Test Definition CRUD
@@ -131,5 +187,126 @@ impl Database {
     pub async fn get_test_run(&self, id: Uuid) -> Result<Option<SaasTestRun>, anyhow::Error> {
         let runs = self.test_runs.lock().unwrap();
         Ok(runs.iter().find(|r| r.id == id).cloned())
+    }
+
+    // Plan CRUD
+    pub async fn list_plans(&self) -> Result<Vec<Plan>, anyhow::Error> {
+        let plans = self.plans.lock().unwrap();
+        Ok(plans.clone())
+    }
+
+    pub async fn get_plan_by_slug(&self, slug: &str) -> Result<Option<Plan>, anyhow::Error> {
+        let plans = self.plans.lock().unwrap();
+        Ok(plans.iter().find(|p| p.slug == slug).cloned())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_database_initialization() {
+        let db = Database::new("test://").await.expect("Failed to create database");
+        let plans = db.list_plans().await.expect("Failed to list plans");
+        
+        assert_eq!(plans.len(), 2);
+        assert!(plans.iter().any(|p| p.slug == "free"));
+        assert!(plans.iter().any(|p| p.slug == "pro"));
+    }
+
+    #[tokio::test]
+    async fn test_plan_model_serialization() {
+        let plan = Plan {
+            id: Uuid::new_v4(),
+            slug: "test".to_string(),
+            price_cents: 1000,
+            features: serde_json::json!({
+                "feature1": true,
+                "feature2": "value"
+            }),
+            stripe_price_id: Some("price_test123".to_string()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // Test serialization
+        let json = serde_json::to_string(&plan).expect("Failed to serialize plan");
+        assert!(json.contains("test"));
+        assert!(json.contains("1000"));
+
+        // Test deserialization
+        let deserialized: Plan = serde_json::from_str(&json).expect("Failed to deserialize plan");
+        assert_eq!(deserialized.slug, "test");
+        assert_eq!(deserialized.price_cents, 1000);
+    }
+
+    #[tokio::test]
+    async fn test_get_plan_by_slug() {
+        let db = Database::new("test://").await.expect("Failed to create database");
+        
+        // Test finding existing plan
+        let free_plan = db.get_plan_by_slug("free").await.expect("Failed to get plan");
+        assert!(free_plan.is_some());
+        assert_eq!(free_plan.unwrap().price_cents, 0);
+
+        let pro_plan = db.get_plan_by_slug("pro").await.expect("Failed to get plan");
+        assert!(pro_plan.is_some());
+        assert_eq!(pro_plan.unwrap().price_cents, 2900);
+
+        // Test non-existent plan
+        let nonexistent = db.get_plan_by_slug("nonexistent").await.expect("Failed to get plan");
+        assert!(nonexistent.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_default_plan_features() {
+        let db = Database::new("test://").await.expect("Failed to create database");
+        
+        let free_plan = db.get_plan_by_slug("free").await.expect("Failed to get plan").unwrap();
+        let features = free_plan.features;
+        assert_eq!(features["max_tests"], 5);
+        assert_eq!(features["support"], "community");
+
+        let pro_plan = db.get_plan_by_slug("pro").await.expect("Failed to get plan").unwrap();
+        let features = pro_plan.features;
+        assert_eq!(features["max_tests"], "unlimited");
+        assert_eq!(features["support"], "priority");
+        assert_eq!(features["advanced_analytics"], true);
+    }
+
+    #[tokio::test]
+    async fn test_test_definition_crud() {
+        let db = Database::new("test://").await.expect("Failed to create database");
+        
+        let test_def = SaasTestDefinition {
+            id: Uuid::new_v4(),
+            name: "Test Definition".to_string(),
+            description: Some("A test definition".to_string()),
+            code: "console.log('test')".to_string(),
+            language: "javascript".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            user_id: Some(Uuid::new_v4()),
+            organization_id: Some(Uuid::new_v4()),
+            is_public: false,
+        };
+
+        // Create
+        db.create_test_definition(&test_def).await.expect("Failed to create test definition");
+
+        // Read
+        let retrieved = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name, "Test Definition");
+
+        // List
+        let all_defs = db.list_test_definitions(None, None).await.expect("Failed to list test definitions");
+        assert_eq!(all_defs.len(), 1);
+
+        // Delete
+        db.delete_test_definition(test_def.id).await.expect("Failed to delete test definition");
+        let after_delete = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
+        assert!(after_delete.is_none());
     }
 }

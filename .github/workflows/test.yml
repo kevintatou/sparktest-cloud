@@ -1,0 +1,67 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  backend-tests:
+    name: Backend Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Cache cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+          
+    - name: Run backend unit tests
+      run: cargo test --all --lib --verbose
+      
+  frontend-tests:
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9.0.0
+        
+    - name: Cache pnpm dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.pnpm-store
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+          
+    - name: Install dependencies
+      run: pnpm install
+      
+    - name: Run frontend unit tests
+      run: |
+        cd apps/saas/frontend
+        pnpm test --verbose

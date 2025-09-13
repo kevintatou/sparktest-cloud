@@ -8,6 +8,7 @@ import {
   Plug, GitBranch, Settings, Bell, Play
 } from 'lucide-react';
 import { NavigationKey } from './navigation';
+import { BillingSection } from './billing-section';
 
 export interface SaasSectionsProps {
   activeTab: NavigationKey;
@@ -111,48 +112,7 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab }) => {
               Manage your subscription, billing, and usage.
             </p>
           </div>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Current Plan</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">Professional Plan</span>
-                    <span className="text-2xl font-bold">$29/mo</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Unlimited tests, 5 team members, priority support
-                  </p>
-                  <Button variant="outline" className="w-full">
-                    Manage Subscription
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Usage This Month</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span>Runs</span>
-                    <span className="font-medium">1,245 / ∞</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Team Members</span>
-                    <span className="font-medium">3 / 5</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Storage Used</span>
-                    <span className="font-medium">2.4GB / 10GB</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <BillingSection />
         </div>
       );
 
