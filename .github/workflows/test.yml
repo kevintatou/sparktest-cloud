@@ -48,7 +48,7 @@ jobs:
     - name: Install pnpm
       uses: pnpm/action-setup@v4
       with:
-        version: 8
+        version: 9.0.0
         
     - name: Cache pnpm dependencies
       uses: actions/cache@v4
@@ -65,44 +65,3 @@ jobs:
       run: |
         cd apps/saas/frontend
         pnpm test --verbose
-        
-  comprehensive-tests:
-    name: Comprehensive Test Suite
-    runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests]
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      
-    - name: Install Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        
-    - name: Install pnpm
-      uses: pnpm/action-setup@v4
-      with:
-        version: 8
-        
-    - name: Install dependencies
-      run: pnpm install
-      
-    - name: Run comprehensive test suite
-      run: |
-        chmod +x test-stripe-mvp.sh
-        ./test-stripe-mvp.sh
-        
-    - name: Display test summary
-      run: |
-        echo "🎉 Test Suite Summary:"
-        echo "• Backend: 11 unit tests (Plan models, Database operations, API handlers)"
-        echo "• Frontend: 8 unit tests (API service, React hooks, Error handling)"
-        echo "• Total: 19 comprehensive unit tests with proper mocking"
-        echo ""
-        echo "🔧 Technologies:"
-        echo "• Rust with tokio-test for async testing"
-        echo "• TypeScript/Jest with React Testing Library"
-        echo "• Comprehensive error scenarios and edge cases"
