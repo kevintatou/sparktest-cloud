@@ -66,6 +66,8 @@ pub fn create_app(database: Database) -> Router {
         .route("/api/billing/plans", get(list_plans))
         .route("/api/billing/checkout", post(create_checkout_session))
         .route("/api/billing/webhook", post(handle_webhook))
+        // Organization Policies
+        .route("/api/organizations/:id/policy", get(get_organization_policy))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -403,6 +405,18 @@ async fn handle_webhook(
     Ok(Json(json!({ "status": "ok" })))
 }
 
+// Organization Policy handler
+async fn get_organization_policy(
+    State(db): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>, StatusCode> {
+    match db.get_organization_policy(id).await {
+        Ok(Some(policy)) => Ok(Json(serde_json::to_value(policy).unwrap())),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
 // Handle checkout.session.completed event
 async fn handle_checkout_session_completed(
     db: &Database,
@@ -460,7 +474,11 @@ async fn handle_checkout_session_completed(
 
     db.create_subscription(&subscription).await?;
     
+    // Apply plan policy to organization
+    db.apply_plan_policy_to_organization(organization.id, &pro_plan).await?;
+    
     println!("Created subscription for organization {}: {}", organization.id, subscription_id);
+    println!("Applied pro plan policy to organization {}", organization.id);
     Ok(())
 }
 
@@ -502,7 +520,15 @@ async fn handle_customer_subscription_deleted(
     
     db.update_subscription(&subscription).await?;
     
+    // Apply free plan policy when subscription is canceled
+    let plans = db.list_plans().await?;
+    let free_plan = plans.iter().find(|p| p.slug == "free")
+        .ok_or_else(|| anyhow::anyhow!("Free plan not found"))?;
+        
+    db.apply_plan_policy_to_organization(subscription.organization_id, &free_plan).await?;
+    
     println!("Marked subscription as canceled: {}", subscription_id);
+    println!("Applied free plan policy to organization {}", subscription.organization_id);
     Ok(())
 }
 
@@ -725,5 +751,56 @@ mod tests {
         let deserialized: WebhookEvent = serde_json::from_str(&json_str).expect("Failed to deserialize");
         assert_eq!(deserialized.event_type, "checkout.session.completed");
         assert_eq!(deserialized.data.object["customer"], "cus_test123");
+    }
+
+    #[tokio::test]
+    async fn test_webhook_policy_application() {
+        let db = Database::new("test://").await.expect("Failed to create test database");
+        
+        // Create test organization
+        let org = Organization {
+            id: Uuid::new_v4(),
+            name: "Test Organization".to_string(),
+            stripe_customer_id: Some("cus_test123".to_string()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        db.create_organization(&org).await.expect("Failed to create organization");
+
+        // Simulate checkout session completed webhook
+        let session_data = serde_json::json!({
+            "customer": "cus_test123",
+            "subscription": "sub_test123"
+        });
+
+        handle_checkout_session_completed(&db, &session_data).await
+            .expect("Failed to handle checkout session");
+
+        // Verify organization policy was applied
+        let policy = db.get_organization_policy(org.id).await
+            .expect("Failed to get policy")
+            .expect("Policy not found");
+
+        assert_eq!(policy.organization_id, org.id);
+        assert_eq!(policy.max_tests, None); // Pro plan = unlimited
+        assert_eq!(policy.support_level, "priority");
+        assert_eq!(policy.advanced_analytics, true);
+
+        // Simulate subscription deletion webhook
+        let subscription_data = serde_json::json!({
+            "id": "sub_test123"
+        });
+
+        handle_customer_subscription_deleted(&db, &subscription_data).await
+            .expect("Failed to handle subscription deletion");
+
+        // Verify policy was downgraded to free plan
+        let downgraded_policy = db.get_organization_policy(org.id).await
+            .expect("Failed to get policy")
+            .expect("Policy not found");
+
+        assert_eq!(downgraded_policy.max_tests, Some(5)); // Free plan limit
+        assert_eq!(downgraded_policy.support_level, "community");
+        assert_eq!(downgraded_policy.advanced_analytics, false);
     }
 }

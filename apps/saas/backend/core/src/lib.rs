@@ -101,6 +101,21 @@ pub struct OrgSubscription {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizationPolicy {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub max_tests: Option<i32>, // None means unlimited
+    pub max_runs_per_month: Option<i32>, // None means unlimited
+    pub retention_days: i32,
+    pub support_level: String, // "community", "priority", "enterprise"
+    pub advanced_analytics: bool,
+    pub team_collaboration: bool,
+    pub custom_overrides: serde_json::Value, // Store any custom policy overrides
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 // Simplified database operations (placeholder implementation)
 pub struct Database {
     // For now, use in-memory storage
@@ -109,6 +124,7 @@ pub struct Database {
     plans: std::sync::Arc<std::sync::Mutex<Vec<Plan>>>,
     organizations: std::sync::Arc<std::sync::Mutex<Vec<Organization>>>,
     subscriptions: std::sync::Arc<std::sync::Mutex<Vec<OrgSubscription>>>,
+    organization_policies: std::sync::Arc<std::sync::Mutex<Vec<OrganizationPolicy>>>,
 }
 
 impl Database {
@@ -120,6 +136,7 @@ impl Database {
             plans: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             organizations: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             subscriptions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            organization_policies: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
         };
         
         // Initialize with default plans
@@ -139,7 +156,15 @@ impl Database {
             features: serde_json::json!({
                 "max_tests": 5,
                 "max_runs_per_month": 100,
-                "support": "community"
+                "support": "community",
+                "policy_defaults": {
+                    "max_tests": 5,
+                    "max_runs_per_month": 100,
+                    "retention_days": 30,
+                    "support_level": "community",
+                    "advanced_analytics": false,
+                    "team_collaboration": false
+                }
             }),
             stripe_price_id: std::env::var("STRIPE_FREE_PRICE_ID").ok(),
             created_at: chrono::Utc::now(),
@@ -156,7 +181,15 @@ impl Database {
                 "max_runs_per_month": "unlimited",
                 "support": "priority",
                 "advanced_analytics": true,
-                "team_collaboration": true
+                "team_collaboration": true,
+                "policy_defaults": {
+                    "max_tests": null,
+                    "max_runs_per_month": null,
+                    "retention_days": 90,
+                    "support_level": "priority",
+                    "advanced_analytics": true,
+                    "team_collaboration": true
+                }
             }),
             stripe_price_id: std::env::var("STRIPE_PRO_PRICE_ID").ok(),
             created_at: chrono::Utc::now(),
@@ -265,6 +298,79 @@ impl Database {
             subs[pos] = subscription.clone();
         }
         Ok(())
+    }
+
+    // Organization Policy CRUD
+    pub async fn create_organization_policy(&self, policy: &OrganizationPolicy) -> Result<(), anyhow::Error> {
+        let mut policies = self.organization_policies.lock().unwrap();
+        policies.push(policy.clone());
+        Ok(())
+    }
+
+    pub async fn get_organization_policy(&self, organization_id: Uuid) -> Result<Option<OrganizationPolicy>, anyhow::Error> {
+        let policies = self.organization_policies.lock().unwrap();
+        Ok(policies.iter().find(|p| p.organization_id == organization_id).cloned())
+    }
+
+    pub async fn update_organization_policy(&self, policy: &OrganizationPolicy) -> Result<(), anyhow::Error> {
+        let mut policies = self.organization_policies.lock().unwrap();
+        if let Some(pos) = policies.iter().position(|p| p.id == policy.id) {
+            policies[pos] = policy.clone();
+        }
+        Ok(())
+    }
+
+    pub async fn upsert_organization_policy(&self, policy: &OrganizationPolicy) -> Result<(), anyhow::Error> {
+        let mut policies = self.organization_policies.lock().unwrap();
+        if let Some(pos) = policies.iter().position(|p| p.organization_id == policy.organization_id) {
+            policies[pos] = policy.clone();
+        } else {
+            policies.push(policy.clone());
+        }
+        Ok(())
+    }
+
+    // Apply plan policy defaults while preserving custom overrides
+    pub async fn apply_plan_policy_to_organization(&self, organization_id: Uuid, plan: &Plan) -> Result<(), anyhow::Error> {
+        let policy_defaults = plan.features["policy_defaults"].as_object()
+            .ok_or_else(|| anyhow::anyhow!("Plan {} has no policy defaults", plan.slug))?;
+
+        // Get existing policy or create a new one
+        let existing_policy = self.get_organization_policy(organization_id).await?;
+        let custom_overrides = existing_policy
+            .as_ref()
+            .map(|p| p.custom_overrides.clone())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        let policy = OrganizationPolicy {
+            id: existing_policy.as_ref().map(|p| p.id).unwrap_or_else(Uuid::new_v4),
+            organization_id,
+            max_tests: policy_defaults.get("max_tests")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32),
+            max_runs_per_month: policy_defaults.get("max_runs_per_month")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32),
+            retention_days: policy_defaults.get("retention_days")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32)
+                .unwrap_or(30),
+            support_level: policy_defaults.get("support_level")
+                .and_then(|v| v.as_str())
+                .unwrap_or("community")
+                .to_string(),
+            advanced_analytics: policy_defaults.get("advanced_analytics")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            team_collaboration: policy_defaults.get("team_collaboration")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            custom_overrides,
+            created_at: existing_policy.as_ref().map(|p| p.created_at).unwrap_or_else(Utc::now),
+            updated_at: Utc::now(),
+        };
+
+        self.upsert_organization_policy(&policy).await
     }
 }
 
@@ -375,5 +481,64 @@ mod tests {
         db.delete_test_definition(test_def.id).await.expect("Failed to delete test definition");
         let after_delete = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
         assert!(after_delete.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_organization_policy_mapping() {
+        let db = Database::new("test://").await.expect("Failed to create database");
+        let organization_id = Uuid::new_v4();
+        
+        // Test applying free plan policy
+        let free_plan = db.get_plan_by_slug("free").await.expect("Failed to get plan").unwrap();
+        db.apply_plan_policy_to_organization(organization_id, &free_plan).await
+            .expect("Failed to apply free plan policy");
+        
+        let policy = db.get_organization_policy(organization_id).await
+            .expect("Failed to get policy")
+            .expect("Policy not found");
+        
+        assert_eq!(policy.organization_id, organization_id);
+        assert_eq!(policy.max_tests, Some(5));
+        assert_eq!(policy.max_runs_per_month, Some(100));
+        assert_eq!(policy.retention_days, 30);
+        assert_eq!(policy.support_level, "community");
+        assert_eq!(policy.advanced_analytics, false);
+        assert_eq!(policy.team_collaboration, false);
+        
+        // Test upgrading to pro plan
+        let pro_plan = db.get_plan_by_slug("pro").await.expect("Failed to get plan").unwrap();
+        db.apply_plan_policy_to_organization(organization_id, &pro_plan).await
+            .expect("Failed to apply pro plan policy");
+        
+        let updated_policy = db.get_organization_policy(organization_id).await
+            .expect("Failed to get policy")
+            .expect("Policy not found");
+        
+        assert_eq!(updated_policy.organization_id, organization_id);
+        assert_eq!(updated_policy.max_tests, None); // unlimited
+        assert_eq!(updated_policy.max_runs_per_month, None); // unlimited
+        assert_eq!(updated_policy.retention_days, 90);
+        assert_eq!(updated_policy.support_level, "priority");
+        assert_eq!(updated_policy.advanced_analytics, true);
+        assert_eq!(updated_policy.team_collaboration, true);
+        
+        // Test that custom overrides are preserved
+        let mut policy_with_overrides = updated_policy.clone();
+        policy_with_overrides.custom_overrides = serde_json::json!({
+            "custom_setting": "custom_value"
+        });
+        db.upsert_organization_policy(&policy_with_overrides).await
+            .expect("Failed to save custom policy");
+        
+        // Apply free plan again and check overrides are preserved
+        db.apply_plan_policy_to_organization(organization_id, &free_plan).await
+            .expect("Failed to apply free plan policy again");
+        
+        let final_policy = db.get_organization_policy(organization_id).await
+            .expect("Failed to get policy")
+            .expect("Policy not found");
+        
+        assert_eq!(final_policy.max_tests, Some(5)); // Plan default applied
+        assert_eq!(final_policy.custom_overrides["custom_setting"], "custom_value"); // Override preserved
     }
 }
