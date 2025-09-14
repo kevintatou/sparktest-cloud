@@ -1,17 +1,21 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{StatusCode, HeaderMap},
     routing::{get, post},
     Json, Router,
+    body::Bytes,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sparktest_saas_core::{Database, SaasTestDefinition, SaasTestRun, Plan};
+use sparktest_saas_core::{Database, SaasTestDefinition, SaasTestRun, Plan, Organization, OrgSubscription};
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 use chrono::Utc;
 use stripe::{Client, CheckoutSession, CheckoutSessionMode, CreateCheckoutSession, CreateCheckoutSessionLineItems};
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
+use hex;
 
 pub type AppState = Arc<Database>;
 
@@ -26,6 +30,20 @@ pub struct CheckoutRequest {
 pub struct CheckoutResponse {
     pub checkout_url: String,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WebhookEvent {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub data: WebhookEventData,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WebhookEventData {
+    pub object: Value,
+}
+
+type HmacSha256 = Hmac<Sha256>;
 
 pub fn create_app(database: Database) -> Router {
     let state = Arc::new(database);
@@ -47,6 +65,7 @@ pub fn create_app(database: Database) -> Router {
         // Billing
         .route("/api/billing/plans", get(list_plans))
         .route("/api/billing/checkout", post(create_checkout_session))
+        .route("/api/billing/webhook", post(handle_webhook))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -298,6 +317,195 @@ async fn create_checkout_session(
     }
 }
 
+// Webhook signature verification
+fn verify_webhook_signature(
+    payload: &[u8],
+    signature: &str,
+    webhook_secret: &str,
+) -> Result<(), anyhow::Error> {
+    let signature = signature.strip_prefix("v1=")
+        .ok_or_else(|| anyhow::anyhow!("Invalid signature format"))?;
+    
+    let signature_bytes = hex::decode(signature)
+        .map_err(|_| anyhow::anyhow!("Invalid signature encoding"))?;
+
+    let mut mac = HmacSha256::new_from_slice(webhook_secret.as_bytes())
+        .map_err(|_| anyhow::anyhow!("Invalid webhook secret"))?;
+    mac.update(payload);
+    
+    match mac.verify_slice(&signature_bytes) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(anyhow::anyhow!("Signature verification failed")),
+    }
+}
+
+// Webhook handler
+async fn handle_webhook(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<Value>, StatusCode> {
+    // Get webhook secret from environment
+    let webhook_secret = match std::env::var("STRIPE_WEBHOOK_SECRET") {
+        Ok(secret) => secret,
+        Err(_) => {
+            eprintln!("STRIPE_WEBHOOK_SECRET environment variable not set");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    // Verify webhook signature
+    let signature = headers
+        .get("stripe-signature")
+        .and_then(|h| h.to_str().ok())
+        .ok_or(StatusCode::BAD_REQUEST)?;
+
+    if let Err(e) = verify_webhook_signature(&body, signature, &webhook_secret) {
+        eprintln!("Webhook signature verification failed: {:?}", e);
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Parse webhook event
+    let event: WebhookEvent = match serde_json::from_slice(&body) {
+        Ok(event) => event,
+        Err(e) => {
+            eprintln!("Failed to parse webhook event: {:?}", e);
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    };
+
+    // Handle different event types
+    match event.event_type.as_str() {
+        "checkout.session.completed" => {
+            if let Err(e) = handle_checkout_session_completed(&db, &event.data.object).await {
+                eprintln!("Failed to handle checkout.session.completed: {:?}", e);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+        "invoice.payment_failed" => {
+            if let Err(e) = handle_invoice_payment_failed(&db, &event.data.object).await {
+                eprintln!("Failed to handle invoice.payment_failed: {:?}", e);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+        "customer.subscription.deleted" => {
+            if let Err(e) = handle_customer_subscription_deleted(&db, &event.data.object).await {
+                eprintln!("Failed to handle customer.subscription.deleted: {:?}", e);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+        _ => {
+            // Ignore other event types
+            println!("Ignoring webhook event type: {}", event.event_type);
+        }
+    }
+
+    Ok(Json(json!({ "status": "ok" })))
+}
+
+// Handle checkout.session.completed event
+async fn handle_checkout_session_completed(
+    db: &Database,
+    session_data: &Value,
+) -> Result<(), anyhow::Error> {
+    let customer_id = session_data["customer"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing customer ID in checkout session"))?;
+    
+    let subscription_id = session_data["subscription"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing subscription ID in checkout session"))?;
+
+    // Find or create organization with stripe customer ID
+    let mut organization = match db.get_organization_by_stripe_customer_id(customer_id).await? {
+        Some(org) => org,
+        None => {
+            // Create a new organization if none exists
+            let new_org = Organization {
+                id: Uuid::new_v4(),
+                name: format!("Organization {}", customer_id),
+                stripe_customer_id: Some(customer_id.to_string()),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            };
+            db.create_organization(&new_org).await?;
+            new_org
+        }
+    };
+
+    // Update organization with customer ID if needed
+    if organization.stripe_customer_id.is_none() {
+        organization.stripe_customer_id = Some(customer_id.to_string());
+        organization.updated_at = Utc::now();
+        db.update_organization(&organization).await?;
+    }
+
+    // Get subscription details from Stripe to extract plan info
+    // For now, we'll use the pro plan as default since that's what triggers checkout
+    let plans = db.list_plans().await?;
+    let pro_plan = plans.iter().find(|p| p.slug == "pro")
+        .ok_or_else(|| anyhow::anyhow!("Pro plan not found"))?;
+
+    // Create subscription record
+    let subscription = OrgSubscription {
+        id: Uuid::new_v4(),
+        organization_id: organization.id,
+        stripe_subscription_id: subscription_id.to_string(),
+        status: "active".to_string(),
+        current_period_end: Utc::now() + chrono::Duration::days(30), // Default to 30 days
+        plan_id: pro_plan.id,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    db.create_subscription(&subscription).await?;
+    
+    println!("Created subscription for organization {}: {}", organization.id, subscription_id);
+    Ok(())
+}
+
+// Handle invoice.payment_failed event
+async fn handle_invoice_payment_failed(
+    db: &Database,
+    invoice_data: &Value,
+) -> Result<(), anyhow::Error> {
+    let subscription_id = invoice_data["subscription"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing subscription ID in invoice"))?;
+
+    let mut subscription = db.get_subscription_by_stripe_id(subscription_id).await?
+        .ok_or_else(|| anyhow::anyhow!("Subscription not found: {}", subscription_id))?;
+
+    subscription.status = "past_due".to_string();
+    subscription.updated_at = Utc::now();
+    
+    db.update_subscription(&subscription).await?;
+    
+    println!("Marked subscription as past_due: {}", subscription_id);
+    Ok(())
+}
+
+// Handle customer.subscription.deleted event
+async fn handle_customer_subscription_deleted(
+    db: &Database,
+    subscription_data: &Value,
+) -> Result<(), anyhow::Error> {
+    let subscription_id = subscription_data["id"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing subscription ID"))?;
+
+    let mut subscription = db.get_subscription_by_stripe_id(subscription_id).await?
+        .ok_or_else(|| anyhow::anyhow!("Subscription not found: {}", subscription_id))?;
+
+    subscription.status = "canceled".to_string();
+    subscription.updated_at = Utc::now();
+    
+    db.update_subscription(&subscription).await?;
+    
+    println!("Marked subscription as canceled: {}", subscription_id);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -418,5 +626,104 @@ mod tests {
         db.delete_test_definition(test_def.id).await.expect("Failed to delete test definition");
         let after_delete = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
         assert!(after_delete.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_signature_verification() {
+        let secret = "test_webhook_secret";
+        let payload = b"test_payload";
+        
+        // Create a valid signature
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(payload);
+        let signature = hex::encode(mac.finalize().into_bytes());
+        let full_signature = format!("v1={}", signature);
+
+        // Test valid signature
+        assert!(verify_webhook_signature(payload, &full_signature, secret).is_ok());
+
+        // Test invalid signature
+        assert!(verify_webhook_signature(payload, "v1=invalid", secret).is_err());
+
+        // Test invalid format
+        assert!(verify_webhook_signature(payload, "invalid_format", secret).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_organization_subscription_operations() {
+        let db = Database::new("test://").await.expect("Failed to create test database");
+        
+        // Create test organization
+        let org = Organization {
+            id: Uuid::new_v4(),
+            name: "Test Organization".to_string(),
+            stripe_customer_id: Some("cus_test123".to_string()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        db.create_organization(&org).await.expect("Failed to create organization");
+
+        // Test finding by stripe customer ID
+        let found_org = db.get_organization_by_stripe_customer_id("cus_test123").await
+            .expect("Failed to get organization")
+            .expect("Organization not found");
+        assert_eq!(found_org.id, org.id);
+
+        // Create test subscription
+        let plans = db.list_plans().await.expect("Failed to list plans");
+        let pro_plan = plans.iter().find(|p| p.slug == "pro").unwrap();
+
+        let subscription = OrgSubscription {
+            id: Uuid::new_v4(),
+            organization_id: org.id,
+            stripe_subscription_id: "sub_test123".to_string(),
+            status: "active".to_string(),
+            current_period_end: Utc::now() + chrono::Duration::days(30),
+            plan_id: pro_plan.id,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        db.create_subscription(&subscription).await.expect("Failed to create subscription");
+
+        // Test finding subscription by stripe ID
+        let found_sub = db.get_subscription_by_stripe_id("sub_test123").await
+            .expect("Failed to get subscription")
+            .expect("Subscription not found");
+        assert_eq!(found_sub.id, subscription.id);
+        assert_eq!(found_sub.status, "active");
+
+        // Test updating subscription status
+        let mut updated_sub = found_sub.clone();
+        updated_sub.status = "past_due".to_string();
+        updated_sub.updated_at = Utc::now();
+        db.update_subscription(&updated_sub).await.expect("Failed to update subscription");
+
+        let updated_found = db.get_subscription_by_stripe_id("sub_test123").await
+            .expect("Failed to get subscription")
+            .expect("Subscription not found");
+        assert_eq!(updated_found.status, "past_due");
+    }
+
+    #[tokio::test]
+    async fn test_webhook_event_serialization() {
+        let webhook_event = WebhookEvent {
+            event_type: "checkout.session.completed".to_string(),
+            data: WebhookEventData {
+                object: serde_json::json!({
+                    "customer": "cus_test123",
+                    "subscription": "sub_test123"
+                }),
+            },
+        };
+
+        // Test serialization
+        let json_str = serde_json::to_string(&webhook_event).expect("Failed to serialize");
+        assert!(json_str.contains("checkout.session.completed"));
+        assert!(json_str.contains("cus_test123"));
+
+        // Test deserialization
+        let deserialized: WebhookEvent = serde_json::from_str(&json_str).expect("Failed to deserialize");
+        assert_eq!(deserialized.event_type, "checkout.session.completed");
+        assert_eq!(deserialized.data.object["customer"], "cus_test123");
     }
 }
