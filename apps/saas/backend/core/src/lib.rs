@@ -1,6 +1,70 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, EncodingKey, DecodingKey};
+use bcrypt::{hash, verify, DEFAULT_COST};
+
+// JWT Claims structure
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub sub: String, // User ID
+    pub email: String,
+    pub org_id: Option<String>, // Current organization ID
+    pub role: Option<MemberRole>, // Role in current organization
+    pub exp: usize, // Expiration time
+    pub iat: usize, // Issued at
+}
+
+// Auth utilities
+pub struct AuthUtils;
+
+impl AuthUtils {
+    pub fn hash_password(password: &str) -> Result<String, anyhow::Error> {
+        Ok(hash(password, DEFAULT_COST)?)
+    }
+
+    pub fn verify_password(password: &str, hash: &str) -> Result<bool, anyhow::Error> {
+        Ok(verify(password, hash)?)
+    }
+
+    pub fn generate_jwt(
+        user_id: Uuid,
+        email: &str,
+        org_id: Option<Uuid>,
+        role: Option<MemberRole>,
+        secret: &str,
+    ) -> Result<String, anyhow::Error> {
+        let exp = (Utc::now() + chrono::Duration::hours(24)).timestamp() as usize;
+        let iat = Utc::now().timestamp() as usize;
+
+        let claims = Claims {
+            sub: user_id.to_string(),
+            email: email.to_string(),
+            org_id: org_id.map(|id| id.to_string()),
+            role,
+            exp,
+            iat,
+        };
+
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret.as_ref()),
+        )?;
+
+        Ok(token)
+    }
+
+    pub fn verify_jwt(token: &str, secret: &str) -> Result<Claims, anyhow::Error> {
+        let token_data = decode::<Claims>(
+            token,
+            &DecodingKey::from_secret(secret.as_ref()),
+            &Validation::new(Algorithm::HS256),
+        )?;
+
+        Ok(token_data.claims)
+    }
+}
 
 // SaaS-specific models that extend the core types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,9 +137,26 @@ pub struct User {
     pub id: Uuid,
     pub email: String,
     pub name: Option<String>,
-    pub organization_id: Option<Uuid>,
+    pub password_hash: Option<String>, // For local auth
+    pub external_provider_id: Option<String>, // For OAuth (Google, GitHub, etc.)
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizationMember {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub user_id: Uuid,
+    pub role: MemberRole,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum MemberRole {
+    Owner,
+    Member,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +190,8 @@ pub struct Database {
     plans: std::sync::Arc<std::sync::Mutex<Vec<Plan>>>,
     organizations: std::sync::Arc<std::sync::Mutex<Vec<Organization>>>,
     subscriptions: std::sync::Arc<std::sync::Mutex<Vec<OrgSubscription>>>,
+    users: std::sync::Arc<std::sync::Mutex<Vec<User>>>,
+    organization_members: std::sync::Arc<std::sync::Mutex<Vec<OrganizationMember>>>,
 }
 
 impl Database {
@@ -120,6 +203,8 @@ impl Database {
             plans: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             organizations: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             subscriptions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            users: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            organization_members: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
         };
         
         // Initialize with default plans
@@ -266,6 +351,80 @@ impl Database {
         }
         Ok(())
     }
+
+    // User CRUD
+    pub async fn create_user(&self, user: &User) -> Result<(), anyhow::Error> {
+        let mut users = self.users.lock().unwrap();
+        users.push(user.clone());
+        Ok(())
+    }
+
+    pub async fn get_user_by_id(&self, id: Uuid) -> Result<Option<User>, anyhow::Error> {
+        let users = self.users.lock().unwrap();
+        Ok(users.iter().find(|u| u.id == id).cloned())
+    }
+
+    pub async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, anyhow::Error> {
+        let users = self.users.lock().unwrap();
+        Ok(users.iter().find(|u| u.email == email).cloned())
+    }
+
+    pub async fn update_user(&self, user: &User) -> Result<(), anyhow::Error> {
+        let mut users = self.users.lock().unwrap();
+        if let Some(pos) = users.iter().position(|u| u.id == user.id) {
+            users[pos] = user.clone();
+        }
+        Ok(())
+    }
+
+    // Organization Member CRUD
+    pub async fn create_organization_member(&self, member: &OrganizationMember) -> Result<(), anyhow::Error> {
+        let mut members = self.organization_members.lock().unwrap();
+        members.push(member.clone());
+        Ok(())
+    }
+
+    pub async fn get_organization_members(&self, organization_id: Uuid) -> Result<Vec<OrganizationMember>, anyhow::Error> {
+        let members = self.organization_members.lock().unwrap();
+        Ok(members.iter().filter(|m| m.organization_id == organization_id).cloned().collect())
+    }
+
+    pub async fn get_user_organizations(&self, user_id: Uuid) -> Result<Vec<(Organization, MemberRole)>, anyhow::Error> {
+        let members = self.organization_members.lock().unwrap();
+        let orgs = self.organizations.lock().unwrap();
+        
+        let user_memberships: Vec<&OrganizationMember> = members.iter()
+            .filter(|m| m.user_id == user_id)
+            .collect();
+        
+        let mut result = Vec::new();
+        for membership in user_memberships {
+            if let Some(org) = orgs.iter().find(|o| o.id == membership.organization_id) {
+                result.push((org.clone(), membership.role.clone()));
+            }
+        }
+        
+        Ok(result)
+    }
+
+    pub async fn get_organization_member(&self, organization_id: Uuid, user_id: Uuid) -> Result<Option<OrganizationMember>, anyhow::Error> {
+        let members = self.organization_members.lock().unwrap();
+        Ok(members.iter().find(|m| m.organization_id == organization_id && m.user_id == user_id).cloned())
+    }
+
+    pub async fn remove_organization_member(&self, organization_id: Uuid, user_id: Uuid) -> Result<(), anyhow::Error> {
+        let mut members = self.organization_members.lock().unwrap();
+        members.retain(|m| !(m.organization_id == organization_id && m.user_id == user_id));
+        Ok(())
+    }
+
+    pub async fn update_organization_member(&self, member: &OrganizationMember) -> Result<(), anyhow::Error> {
+        let mut members = self.organization_members.lock().unwrap();
+        if let Some(pos) = members.iter().position(|m| m.id == member.id) {
+            members[pos] = member.clone();
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -375,5 +534,129 @@ mod tests {
         db.delete_test_definition(test_def.id).await.expect("Failed to delete test definition");
         let after_delete = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
         assert!(after_delete.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_user_crud() {
+        let db = Database::new("test://").await.expect("Failed to create database");
+        
+        let user = User {
+            id: Uuid::new_v4(),
+            email: "test@example.com".to_string(),
+            name: Some("Test User".to_string()),
+            password_hash: Some("hashed_password".to_string()),
+            external_provider_id: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // Create
+        db.create_user(&user).await.expect("Failed to create user");
+
+        // Read by ID
+        let retrieved = db.get_user_by_id(user.id).await.expect("Failed to get user");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().email, "test@example.com");
+
+        // Read by email
+        let by_email = db.get_user_by_email("test@example.com").await.expect("Failed to get user");
+        assert!(by_email.is_some());
+        assert_eq!(by_email.unwrap().id, user.id);
+    }
+
+    #[tokio::test]
+    async fn test_organization_member_crud() {
+        let db = Database::new("test://").await.expect("Failed to create database");
+        
+        // Create test user and organization
+        let user = User {
+            id: Uuid::new_v4(),
+            email: "member@example.com".to_string(),
+            name: Some("Member User".to_string()),
+            password_hash: Some("hashed_password".to_string()),
+            external_provider_id: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        db.create_user(&user).await.expect("Failed to create user");
+
+        let org = Organization {
+            id: Uuid::new_v4(),
+            name: "Test Organization".to_string(),
+            stripe_customer_id: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        db.create_organization(&org).await.expect("Failed to create organization");
+
+        let member = OrganizationMember {
+            id: Uuid::new_v4(),
+            organization_id: org.id,
+            user_id: user.id,
+            role: MemberRole::Owner,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // Create membership
+        db.create_organization_member(&member).await.expect("Failed to create member");
+
+        // Test getting organization members
+        let org_members = db.get_organization_members(org.id).await.expect("Failed to get members");
+        assert_eq!(org_members.len(), 1);
+        assert_eq!(org_members[0].role, MemberRole::Owner);
+
+        // Test getting user organizations
+        let user_orgs = db.get_user_organizations(user.id).await.expect("Failed to get user orgs");
+        assert_eq!(user_orgs.len(), 1);
+        assert_eq!(user_orgs[0].1, MemberRole::Owner);
+
+        // Test getting specific membership
+        let membership = db.get_organization_member(org.id, user.id).await.expect("Failed to get membership");
+        assert!(membership.is_some());
+        assert_eq!(membership.unwrap().role, MemberRole::Owner);
+    }
+
+    #[tokio::test]
+    async fn test_auth_utils_password() {
+        let password = "test_password_123";
+        
+        // Test password hashing
+        let hash = AuthUtils::hash_password(password).expect("Failed to hash password");
+        assert!(hash.len() > 0);
+        assert_ne!(hash, password); // Should be different from original
+
+        // Test password verification
+        let is_valid = AuthUtils::verify_password(password, &hash).expect("Failed to verify password");
+        assert!(is_valid);
+
+        // Test wrong password
+        let is_invalid = AuthUtils::verify_password("wrong_password", &hash).expect("Failed to verify password");
+        assert!(!is_invalid);
+    }
+
+    #[tokio::test]
+    async fn test_auth_utils_jwt() {
+        let user_id = Uuid::new_v4();
+        let email = "test@example.com";
+        let org_id = Some(Uuid::new_v4());
+        let role = Some(MemberRole::Owner);
+        let secret = "test_secret_key_for_jwt";
+
+        // Test JWT generation
+        let token = AuthUtils::generate_jwt(user_id, email, org_id, role.clone(), secret)
+            .expect("Failed to generate JWT");
+        assert!(token.len() > 0);
+
+        // Test JWT verification
+        let claims = AuthUtils::verify_jwt(&token, secret).expect("Failed to verify JWT");
+        assert_eq!(claims.sub, user_id.to_string());
+        assert_eq!(claims.email, email);
+        assert_eq!(claims.org_id, org_id.map(|id| id.to_string()));
+        assert_eq!(claims.role, role);
+
+        // Test invalid secret
+        let invalid_result = AuthUtils::verify_jwt(&token, "wrong_secret");
+        assert!(invalid_result.is_err());
     }
 }
