@@ -6,6 +6,8 @@ import { CreateTestDialog } from '@/components/create-test-dialog';
 import { CreateExecutorDialog } from '@/components/create-executor-dialog';
 import { CreateSuiteDialog } from '@/components/create-suite-dialog';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { AuthGuard } from '@/components/auth/auth-guard';
+import { UserMenu } from '@/components/auth/user-menu';
 import { useToast } from '@/hooks/use-toast';
 import { useStorage } from '@/hooks/use-storage';
 import { cn } from '@/lib/utils';
@@ -16,7 +18,7 @@ import { Dashboard } from '@/components/dashboard/dashboard';
 import { TestSections } from '@/components/dashboard/test-sections';
 import { SaasSections } from '@/components/dashboard/saas-sections';
 
-export default function Home() {
+function DashboardContent() {
   const [activeTab, setActiveTab] = useState<NavigationKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false); // Start closed on initial load
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -263,6 +265,7 @@ export default function Home() {
                 <span>http://localhost:3001</span>
               </div>
               <ThemeToggle />
+              <UserMenu />
             </div>
           </div>
         </div>
@@ -327,5 +330,13 @@ export default function Home() {
         availableDefinitions={testDefinitions}
       />
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <AuthGuard>
+      <DashboardContent />
+    </AuthGuard>
   );
 }
