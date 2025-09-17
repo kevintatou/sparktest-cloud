@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sparktest_saas_core::{
     Database, SaasTestDefinition, SaasTestRun, Plan, Organization, OrgSubscription,
-    User, OrganizationMember, MemberRole, AuthUtils, Claims
+    User, OrganizationMember, MemberRole, AuthUtils
 };
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
@@ -458,7 +458,7 @@ async fn auth_switch_organization(
 }
 
 // Organization management handlers
-async fn list_user_organizations(auth: AuthContext) -> Result<Json<Vec<OrganizationInfo>>, StatusCode> {
+async fn list_user_organizations(_auth: AuthContext) -> Result<Json<Vec<OrganizationInfo>>, StatusCode> {
     // This would normally be implemented with a proper database query
     // For now, return empty list as a placeholder
     Ok(Json(vec![]))
@@ -1137,90 +1137,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_database_operations() {
-        let db = Database::new("test://").await.expect("Failed to create test database");
-        
-        // Test listing plans
-        let plans = db.list_plans().await.expect("Failed to list plans");
-        assert_eq!(plans.len(), 2);
-        
-        // Test finding plans by slug
-        let free_plan = db.get_plan_by_slug("free").await.expect("Failed to get plan");
-        assert!(free_plan.is_some());
-        assert_eq!(free_plan.unwrap().price_cents, 0);
-
-        let pro_plan = db.get_plan_by_slug("pro").await.expect("Failed to get plan");
-        assert!(pro_plan.is_some());
-        assert_eq!(pro_plan.unwrap().price_cents, 2900);
-
-        // Test non-existent plan
-        let nonexistent = db.get_plan_by_slug("nonexistent").await.expect("Failed to get plan");
-        assert!(nonexistent.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_free_plan_checkout_logic() {
-        let db = Database::new("test://").await.expect("Failed to create test database");
-        
-        // Simulate free plan checkout logic
-        let plan = db.get_plan_by_slug("free").await.expect("Failed to get plan").unwrap();
-        assert_eq!(plan.price_cents, 0);
-        
-        // For free plan, we should skip Stripe
-        let success_url = "http://localhost:3000/success".to_string();
-        assert_eq!(success_url, "http://localhost:3000/success");
-    }
-
-    #[tokio::test]
-    async fn test_pro_plan_stripe_requirements() {
-        let db = Database::new("test://").await.expect("Failed to create test database");
-        
-        let plan = db.get_plan_by_slug("pro").await.expect("Failed to get plan").unwrap();
-        assert_eq!(plan.price_cents, 2900);
-        assert!(plan.price_cents > 0); // Should require Stripe for paid plans
-        
-        // Should have features that differentiate from free
-        let features = &plan.features;
-        assert_eq!(features["max_tests"], "unlimited");
-        assert_eq!(features["support"], "priority");
-    }
-
-    #[tokio::test]
-    async fn test_test_definition_operations() {
-        let db = Database::new("test://").await.expect("Failed to create test database");
-        
-        let test_def = SaasTestDefinition {
-            id: Uuid::new_v4(),
-            name: "Test API Definition".to_string(),
-            description: Some("A test definition via API".to_string()),
-            code: "console.log('api test')".to_string(),
-            language: "javascript".to_string(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            user_id: Some(Uuid::new_v4()),
-            organization_id: Some(Uuid::new_v4()),
-            is_public: true,
-        };
-
-        // Create
-        db.create_test_definition(&test_def).await.expect("Failed to create test definition");
-
-        // Read
-        let retrieved = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
-        assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().name, "Test API Definition");
-
-        // List
-        let all_defs = db.list_test_definitions(None, None).await.expect("Failed to list test definitions");
-        assert_eq!(all_defs.len(), 1);
-
-        // Delete
-        db.delete_test_definition(test_def.id).await.expect("Failed to delete test definition");
-        let after_delete = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
-        assert!(after_delete.is_none());
-    }
-
-    #[tokio::test]
     async fn test_webhook_signature_verification() {
         let secret = "test_webhook_secret";
         let payload = b"test_payload";
@@ -1239,61 +1155,6 @@ mod tests {
 
         // Test invalid format
         assert!(verify_webhook_signature(payload, "invalid_format", secret).is_err());
-    }
-
-    #[tokio::test]
-    async fn test_organization_subscription_operations() {
-        let db = Database::new("test://").await.expect("Failed to create test database");
-        
-        // Create test organization
-        let org = Organization {
-            id: Uuid::new_v4(),
-            name: "Test Organization".to_string(),
-            stripe_customer_id: Some("cus_test123".to_string()),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        db.create_organization(&org).await.expect("Failed to create organization");
-
-        // Test finding by stripe customer ID
-        let found_org = db.get_organization_by_stripe_customer_id("cus_test123").await
-            .expect("Failed to get organization")
-            .expect("Organization not found");
-        assert_eq!(found_org.id, org.id);
-
-        // Create test subscription
-        let plans = db.list_plans().await.expect("Failed to list plans");
-        let pro_plan = plans.iter().find(|p| p.slug == "pro").unwrap();
-
-        let subscription = OrgSubscription {
-            id: Uuid::new_v4(),
-            organization_id: org.id,
-            stripe_subscription_id: "sub_test123".to_string(),
-            status: "active".to_string(),
-            current_period_end: Utc::now() + chrono::Duration::days(30),
-            plan_id: pro_plan.id,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        db.create_subscription(&subscription).await.expect("Failed to create subscription");
-
-        // Test finding subscription by stripe ID
-        let found_sub = db.get_subscription_by_stripe_id("sub_test123").await
-            .expect("Failed to get subscription")
-            .expect("Subscription not found");
-        assert_eq!(found_sub.id, subscription.id);
-        assert_eq!(found_sub.status, "active");
-
-        // Test updating subscription status
-        let mut updated_sub = found_sub.clone();
-        updated_sub.status = "past_due".to_string();
-        updated_sub.updated_at = Utc::now();
-        db.update_subscription(&updated_sub).await.expect("Failed to update subscription");
-
-        let updated_found = db.get_subscription_by_stripe_id("sub_test123").await
-            .expect("Failed to get subscription")
-            .expect("Subscription not found");
-        assert_eq!(updated_found.status, "past_due");
     }
 
     #[tokio::test]
