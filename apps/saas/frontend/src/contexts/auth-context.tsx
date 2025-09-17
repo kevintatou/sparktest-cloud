@@ -1,75 +1,57 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { apiService, User, Organization, SignupRequest, LoginRequest } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
+import { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
   user: User | null;
-  organization: Organization | null;
+  session: Session | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (credentials: LoginRequest) => Promise<void>;
-  signup: (data: SignupRequest) => Promise<void>;
-  logout: () => Promise<void>;
-  switchOrganization: (orgId: string) => Promise<void>;
-  refreshAuth: () => Promise<void>;
+  signUp: (email: string, password: string, options?: { data?: { name?: string } }) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [organization, setOrganization] = useState<Organization | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const isAuthenticated = !!user;
-
-  const refreshAuth = async () => {
-    try {
-      const token = apiService.getToken();
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
-      const authData = await apiService.getMe();
-      setUser({
-        id: authData.user_id,
-        email: authData.email,
-        name: authData.name,
-      });
-
-      if (authData.organization_id) {
-        // This is a simplified version - in a real app you'd fetch full org details
-        setOrganization({
-          id: authData.organization_id,
-          name: 'Current Organization', // Would be fetched from API
-          role: authData.role || 'Member',
-        });
-      } else {
-        setOrganization(null);
-      }
-    } catch (error) {
-      console.error('Failed to refresh auth:', error);
-      // Token is invalid, clear it
-      apiService.setToken(null);
-      setUser(null);
-      setOrganization(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const isAuthenticated = !!user && !!session;
 
   useEffect(() => {
-    refreshAuth();
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (credentials: LoginRequest) => {
+  const signUp = async (email: string, password: string, options?: { data?: { name?: string } }) => {
     setLoading(true);
     try {
-      const response = await apiService.login(credentials);
-      setUser(response.user);
-      setOrganization(response.organization || null);
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options,
+      });
+      if (error) throw error;
     } catch (error) {
       throw error;
     } finally {
@@ -77,12 +59,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signup = async (data: SignupRequest) => {
+  const signIn = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const response = await apiService.signup(data);
-      setUser(response.user);
-      setOrganization(response.organization || null);
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
     } catch (error) {
       throw error;
     } finally {
@@ -90,27 +74,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = async () => {
+  const signOut = async () => {
     setLoading(true);
     try {
-      await apiService.logout();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
     } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      setUser(null);
-      setOrganization(null);
-      setLoading(false);
-    }
-  };
-
-  const switchOrganization = async (orgId: string) => {
-    setLoading(true);
-    try {
-      const response = await apiService.switchOrganization(orgId);
-      setUser(response.user);
-      setOrganization(response.organization || null);
-    } catch (error) {
-      throw error;
+      console.error('Sign out error:', error);
     } finally {
       setLoading(false);
     }
@@ -118,14 +88,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = {
     user,
-    organization,
+    session,
     loading,
     isAuthenticated,
-    login,
-    signup,
-    logout,
-    switchOrganization,
-    refreshAuth,
+    signUp,
+    signIn,
+    signOut,
   };
 
   return (

@@ -15,7 +15,7 @@ export function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { signIn } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -24,7 +24,7 @@ export function LoginForm() {
     setLoading(true);
 
     try {
-      await login({ email, password });
+      await signIn(email, password);
       toast({
         title: 'Welcome back!',
         description: 'You have been successfully logged in.',

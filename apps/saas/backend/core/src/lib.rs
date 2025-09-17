@@ -1,70 +1,6 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, EncodingKey, DecodingKey};
-use bcrypt::{hash, verify, DEFAULT_COST};
-
-// JWT Claims structure
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Claims {
-    pub sub: String, // User ID
-    pub email: String,
-    pub org_id: Option<String>, // Current organization ID
-    pub role: Option<MemberRole>, // Role in current organization
-    pub exp: usize, // Expiration time
-    pub iat: usize, // Issued at
-}
-
-// Auth utilities
-pub struct AuthUtils;
-
-impl AuthUtils {
-    pub fn hash_password(password: &str) -> Result<String, anyhow::Error> {
-        Ok(hash(password, DEFAULT_COST)?)
-    }
-
-    pub fn verify_password(password: &str, hash: &str) -> Result<bool, anyhow::Error> {
-        Ok(verify(password, hash)?)
-    }
-
-    pub fn generate_jwt(
-        user_id: Uuid,
-        email: &str,
-        org_id: Option<Uuid>,
-        role: Option<MemberRole>,
-        secret: &str,
-    ) -> Result<String, anyhow::Error> {
-        let exp = (Utc::now() + chrono::Duration::hours(24)).timestamp() as usize;
-        let iat = Utc::now().timestamp() as usize;
-
-        let claims = Claims {
-            sub: user_id.to_string(),
-            email: email.to_string(),
-            org_id: org_id.map(|id| id.to_string()),
-            role,
-            exp,
-            iat,
-        };
-
-        let token = encode(
-            &Header::default(),
-            &claims,
-            &EncodingKey::from_secret(secret.as_ref()),
-        )?;
-
-        Ok(token)
-    }
-
-    pub fn verify_jwt(token: &str, secret: &str) -> Result<Claims, anyhow::Error> {
-        let token_data = decode::<Claims>(
-            token,
-            &DecodingKey::from_secret(secret.as_ref()),
-            &Validation::new(Algorithm::HS256),
-        )?;
-
-        Ok(token_data.claims)
-    }
-}
 
 // SaaS-specific models that extend the core types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -615,48 +551,5 @@ mod tests {
         let membership = db.get_organization_member(org.id, user.id).await.expect("Failed to get membership");
         assert!(membership.is_some());
         assert_eq!(membership.unwrap().role, MemberRole::Owner);
-    }
-
-    #[tokio::test]
-    async fn test_auth_utils_password() {
-        let password = "test_password_123";
-        
-        // Test password hashing
-        let hash = AuthUtils::hash_password(password).expect("Failed to hash password");
-        assert!(hash.len() > 0);
-        assert_ne!(hash, password); // Should be different from original
-
-        // Test password verification
-        let is_valid = AuthUtils::verify_password(password, &hash).expect("Failed to verify password");
-        assert!(is_valid);
-
-        // Test wrong password
-        let is_invalid = AuthUtils::verify_password("wrong_password", &hash).expect("Failed to verify password");
-        assert!(!is_invalid);
-    }
-
-    #[tokio::test]
-    async fn test_auth_utils_jwt() {
-        let user_id = Uuid::new_v4();
-        let email = "test@example.com";
-        let org_id = Some(Uuid::new_v4());
-        let role = Some(MemberRole::Owner);
-        let secret = "test_secret_key_for_jwt";
-
-        // Test JWT generation
-        let token = AuthUtils::generate_jwt(user_id, email, org_id, role.clone(), secret)
-            .expect("Failed to generate JWT");
-        assert!(token.len() > 0);
-
-        // Test JWT verification
-        let claims = AuthUtils::verify_jwt(&token, secret).expect("Failed to verify JWT");
-        assert_eq!(claims.sub, user_id.to_string());
-        assert_eq!(claims.email, email);
-        assert_eq!(claims.org_id, org_id.map(|id| id.to_string()));
-        assert_eq!(claims.role, role);
-
-        // Test invalid secret
-        let invalid_result = AuthUtils::verify_jwt(&token, "wrong_secret");
-        assert!(invalid_result.is_err());
     }
 }

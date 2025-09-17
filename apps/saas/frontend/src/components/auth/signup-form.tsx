@@ -19,7 +19,7 @@ export function SignupForm() {
   const [organizationName, setOrganizationName] = useState('');
   const [createOrganization, setCreateOrganization] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { signup } = useAuth();
+  const { signUp } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -28,17 +28,18 @@ export function SignupForm() {
     setLoading(true);
 
     try {
-      await signup({
-        email,
-        password,
-        name: name || undefined,
-        organization_name: createOrganization ? organizationName : undefined,
+      await signUp(email, password, {
+        data: {
+          name: name || undefined,
+          // Note: Organization creation will need to be handled separately with Supabase
+          // as Supabase Auth doesn't handle business logic like organization creation
+        },
       });
       toast({
         title: 'Account created!',
-        description: 'Your account has been created successfully.',
+        description: 'Please check your email to verify your account.',
       });
-      router.push('/');
+      // Don't redirect immediately with Supabase - user needs to verify email first
     } catch (error) {
       toast({
         title: 'Signup failed',

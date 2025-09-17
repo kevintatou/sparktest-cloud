@@ -16,13 +16,13 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 
 export function UserMenu() {
-  const { user, logout } = useAuth();
+  const { user, signOut } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
 
   const handleLogout = async () => {
     try {
-      await logout();
+      await signOut();
       toast({
         title: 'Signed out',
         description: 'You have been successfully signed out.',
@@ -48,7 +48,7 @@ export function UserMenu() {
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm">
             <User className="h-4 w-4 mr-2" />
-            {user.name || user.email}
+            {user.user_metadata?.name || user.email}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
