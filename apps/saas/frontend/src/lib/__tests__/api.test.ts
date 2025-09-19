@@ -41,7 +41,7 @@ describe('ApiService', () => {
       const result = await apiService.getPlans();
 
       expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/api/billing/plans',
+        'http://localhost:3001/api/billing/plans',
         expect.objectContaining({
           headers: {
             'Content-Type': 'application/json',
@@ -84,7 +84,7 @@ describe('ApiService', () => {
       const result = await apiService.createCheckoutSession(request);
 
       expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/api/billing/checkout',
+        'http://localhost:3001/api/billing/checkout',
         expect.objectContaining({
           method: 'POST',
           headers: {
