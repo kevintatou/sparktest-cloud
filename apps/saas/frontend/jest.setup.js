@@ -17,7 +17,7 @@ jest.mock('next/router', () => ({
 }))
 
 // Mock environment variables
-process.env.NEXT_PUBLIC_API_URL = 'http://localhost:8080'
+process.env.NEXT_PUBLIC_API_URL = 'http://localhost:3001'
 
 // Mock UI components globally
 jest.mock('@/components/ui/button', () => ({
