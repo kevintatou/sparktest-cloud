@@ -1,79 +1,124 @@
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sqlx::{postgres::PgPoolOptions, types::Json, PgPool};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex};
+use uuid::Uuid;
 
-// SaaS-specific models that extend the core types
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SaasTestDefinition {
-    pub id: Uuid,
-    pub name: String,
-    pub description: Option<String>,
-    pub code: String,
-    pub language: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    // SaaS-specific fields
-    pub user_id: Option<Uuid>,
-    pub organization_id: Option<Uuid>,
-    pub is_public: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SaasTestRun {
-    pub id: Uuid,
-    pub definition_id: Uuid,
-    pub status: String,
-    pub result: Option<serde_json::Value>,
-    pub error: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    // SaaS-specific fields
-    pub user_id: Option<Uuid>,
-    pub organization_id: Option<Uuid>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SaasExecutor {
-    pub id: Uuid,
-    pub name: String,
-    pub executor_type: String,
-    pub config: serde_json::Value,
-    pub status: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    // SaaS-specific fields
-    pub user_id: Option<Uuid>,
-    pub organization_id: Option<Uuid>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SaasTestSuite {
-    pub id: Uuid,
-    pub name: String,
-    pub description: Option<String>,
-    pub test_definitions: Vec<Uuid>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    // SaaS-specific fields
-    pub user_id: Option<Uuid>,
-    pub organization_id: Option<Uuid>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Organization {
-    pub id: Uuid,
-    pub name: String,
-    pub stripe_customer_id: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct User {
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Profile {
     pub id: Uuid,
     pub email: String,
     pub name: Option<String>,
-    pub organization_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Project {
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ProjectMember {
+    pub project_id: Uuid,
+    pub profile_id: Uuid,
+    pub role: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestDefinition {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub image: String,
+    pub commands: Vec<String>,
+    pub executor_id: Option<Uuid>,
+    pub labels: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestRun {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub definition_id: Option<Uuid>,
+    pub suite_id: Option<Uuid>,
+    pub executor_id: Option<Uuid>,
+    pub agent_id: Option<Uuid>,
+    pub status: String,
+    pub result: Option<Value>,
+    pub error: Option<String>,
+    pub queued_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Executor {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub executor_type: String,
+    pub image: Option<String>,
+    pub config: Value,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestSuite {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub test_definition_ids: Vec<Uuid>,
+    pub execution_mode: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AgentToken {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub token_hash: String,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentTokenCreated {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub token: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Agent {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub token_id: Option<Uuid>,
+    pub name: String,
+    pub version: Option<String>,
+    pub status: String,
+    pub last_seen_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -83,7 +128,7 @@ pub struct Plan {
     pub id: Uuid,
     pub slug: String,
     pub price_cents: i32,
-    pub features: serde_json::Value,
+    pub features: Value,
     pub stripe_price_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -94,178 +139,1398 @@ pub struct OrgSubscription {
     pub id: Uuid,
     pub organization_id: Uuid,
     pub stripe_subscription_id: String,
-    pub status: String, // active, past_due, canceled, etc.
+    pub status: String,
     pub current_period_end: DateTime<Utc>,
     pub plan_id: Uuid,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-// Simplified database operations (placeholder implementation)
+pub type SaasTestDefinition = TestDefinition;
+pub type SaasTestRun = TestRun;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Organization {
+    pub id: Uuid,
+    pub name: String,
+    pub stripe_customer_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct TestDefinitionRow {
+    id: Uuid,
+    project_id: Uuid,
+    name: String,
+    description: Option<String>,
+    image: String,
+    commands: Json<Vec<String>>,
+    executor_id: Option<Uuid>,
+    labels: Json<Vec<String>>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl From<TestDefinitionRow> for TestDefinition {
+    fn from(row: TestDefinitionRow) -> Self {
+        Self {
+            id: row.id,
+            project_id: row.project_id,
+            name: row.name,
+            description: row.description,
+            image: row.image,
+            commands: row.commands.0,
+            executor_id: row.executor_id,
+            labels: row.labels.0,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct TestSuiteRow {
+    id: Uuid,
+    project_id: Uuid,
+    name: String,
+    description: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct TestRunRow {
+    id: Uuid,
+    project_id: Uuid,
+    definition_id: Option<Uuid>,
+    suite_id: Option<Uuid>,
+    executor_id: Option<Uuid>,
+    agent_id: Option<Uuid>,
+    status: String,
+    result: Option<Value>,
+    error: Option<String>,
+    queued_at: DateTime<Utc>,
+    started_at: Option<DateTime<Utc>>,
+    finished_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl From<TestRunRow> for TestRun {
+    fn from(row: TestRunRow) -> Self {
+        Self {
+            id: row.id,
+            project_id: row.project_id,
+            definition_id: row.definition_id,
+            suite_id: row.suite_id,
+            executor_id: row.executor_id,
+            agent_id: row.agent_id,
+            status: row.status,
+            result: row.result,
+            error: row.error,
+            queued_at: row.queued_at,
+            started_at: row.started_at,
+            finished_at: row.finished_at,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+}
+
+#[derive(Default)]
+struct Store {
+    profiles: Vec<Profile>,
+    projects: Vec<Project>,
+    members: Vec<ProjectMember>,
+    definitions: Vec<TestDefinition>,
+    runs: Vec<TestRun>,
+    executors: Vec<Executor>,
+    suites: Vec<TestSuite>,
+    agent_tokens: Vec<AgentToken>,
+    agents: Vec<Agent>,
+    plans: Vec<Plan>,
+    organizations: Vec<Organization>,
+    subscriptions: Vec<OrgSubscription>,
+}
+
+#[derive(Clone)]
 pub struct Database {
-    // For now, use in-memory storage
-    test_definitions: std::sync::Arc<std::sync::Mutex<Vec<SaasTestDefinition>>>,
-    test_runs: std::sync::Arc<std::sync::Mutex<Vec<SaasTestRun>>>,
-    plans: std::sync::Arc<std::sync::Mutex<Vec<Plan>>>,
-    organizations: std::sync::Arc<std::sync::Mutex<Vec<Organization>>>,
-    subscriptions: std::sync::Arc<std::sync::Mutex<Vec<OrgSubscription>>>,
+    store: Arc<Mutex<Store>>,
+    pool: Option<PgPool>,
+    default_project_id: Uuid,
 }
 
 impl Database {
-    pub async fn new(_database_url: &str) -> Result<Self, anyhow::Error> {
-        // Placeholder implementation - in production this would connect to PostgreSQL
-        let db = Self {
-            test_definitions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
-            test_runs: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
-            plans: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
-            organizations: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
-            subscriptions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+    pub async fn new(database_url: &str) -> Result<Self, anyhow::Error> {
+        let default_project_id = Uuid::new_v4();
+        let now = Utc::now();
+        let mut store = Store::default();
+        store.projects.push(Project {
+            id: default_project_id,
+            name: "Default Project".to_string(),
+            slug: "default".to_string(),
+            created_at: now,
+            updated_at: now,
+        });
+        store.plans = default_plans();
+
+        let pool = if database_url.starts_with("postgres://")
+            || database_url.starts_with("postgresql://")
+        {
+            let pool = PgPoolOptions::new()
+                .max_connections(5)
+                .connect(database_url)
+                .await?;
+            sqlx::query(
+                r#"
+                insert into projects (id, name, slug)
+                values ($1, 'Default Project', 'default')
+                on conflict (slug) do update set updated_at = now()
+                "#,
+            )
+            .bind(default_project_id)
+            .execute(&pool)
+            .await?;
+            Some(pool)
+        } else {
+            None
         };
-        
-        // Initialize with default plans
-        db.init_default_plans().await?;
-        
-        Ok(db)
+
+        let default_project_id = if let Some(pool) = &pool {
+            sqlx::query_scalar::<_, Uuid>("select id from projects where slug = 'default'")
+                .fetch_one(pool)
+                .await?
+        } else {
+            default_project_id
+        };
+
+        Ok(Self {
+            store: Arc::new(Mutex::new(store)),
+            pool,
+            default_project_id,
+        })
     }
 
-    async fn init_default_plans(&self) -> Result<(), anyhow::Error> {
-        let mut plans = self.plans.lock().unwrap();
-        
-        // Free plan
-        plans.push(Plan {
+    pub fn default_project_id(&self) -> Uuid {
+        self.default_project_id
+    }
+
+    pub async fn ensure_profile(
+        &self,
+        id: Uuid,
+        email: String,
+        name: Option<String>,
+    ) -> Result<Profile, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let profile = sqlx::query_as::<_, Profile>(
+                r#"
+                insert into profiles (id, email, name)
+                values ($1, $2, $3)
+                on conflict (id) do update set email = excluded.email, name = excluded.name, updated_at = now()
+                returning id, email, name, created_at, updated_at
+                "#,
+            )
+            .bind(id)
+            .bind(&email)
+            .bind(&name)
+            .fetch_one(pool)
+            .await?;
+            sqlx::query(
+                r#"
+                insert into project_members (project_id, profile_id, role)
+                values ($1, $2, 'owner')
+                on conflict (project_id, profile_id) do nothing
+                "#,
+            )
+            .bind(self.default_project_id)
+            .bind(id)
+            .execute(pool)
+            .await?;
+            return Ok(profile);
+        }
+
+        let now = Utc::now();
+        let mut store = self.store.lock().unwrap();
+        if let Some(profile) = store.profiles.iter_mut().find(|p| p.id == id) {
+            profile.email = email;
+            profile.name = name;
+            profile.updated_at = now;
+            return Ok(profile.clone());
+        }
+
+        let profile = Profile {
+            id,
+            email,
+            name,
+            created_at: now,
+            updated_at: now,
+        };
+        store.profiles.push(profile.clone());
+        if !store
+            .members
+            .iter()
+            .any(|m| m.profile_id == id && m.project_id == self.default_project_id)
+        {
+            store.members.push(ProjectMember {
+                project_id: self.default_project_id,
+                profile_id: id,
+                role: "owner".to_string(),
+                created_at: now,
+            });
+        }
+        Ok(profile)
+    }
+
+    pub async fn list_projects(
+        &self,
+        profile_id: Option<Uuid>,
+    ) -> Result<Vec<Project>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            if let Some(profile_id) = profile_id {
+                return Ok(sqlx::query_as::<_, Project>(
+                    r#"
+                    select p.id, p.name, p.slug, p.created_at, p.updated_at
+                    from projects p
+                    join project_members m on m.project_id = p.id
+                    where m.profile_id = $1
+                    order by p.created_at desc
+                    "#,
+                )
+                .bind(profile_id)
+                .fetch_all(pool)
+                .await?);
+            }
+            return Ok(sqlx::query_as::<_, Project>(
+                "select id, name, slug, created_at, updated_at from projects order by created_at desc",
+            )
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        if let Some(profile_id) = profile_id {
+            let project_ids: Vec<Uuid> = store
+                .members
+                .iter()
+                .filter(|m| m.profile_id == profile_id)
+                .map(|m| m.project_id)
+                .collect();
+            return Ok(store
+                .projects
+                .iter()
+                .filter(|p| project_ids.contains(&p.id))
+                .cloned()
+                .collect());
+        }
+        Ok(store.projects.clone())
+    }
+
+    pub async fn count_projects(&self) -> Result<usize, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let count = sqlx::query_scalar::<_, i64>("select count(*) from projects")
+                .fetch_one(pool)
+                .await?;
+            return Ok(count as usize);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store.projects.len())
+    }
+
+    pub async fn create_project(
+        &self,
+        mut project: Project,
+        owner_id: Option<Uuid>,
+    ) -> Result<Project, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let slug = slugify(&project.name);
+            let created = sqlx::query_as::<_, Project>(
+                r#"
+                insert into projects (name, slug)
+                values ($1, $2)
+                returning id, name, slug, created_at, updated_at
+                "#,
+            )
+            .bind(&project.name)
+            .bind(&slug)
+            .fetch_one(pool)
+            .await?;
+            if let Some(owner_id) = owner_id {
+                sqlx::query(
+                    r#"
+                    insert into project_members (project_id, profile_id, role)
+                    values ($1, $2, 'owner')
+                    on conflict (project_id, profile_id) do nothing
+                    "#,
+                )
+                .bind(created.id)
+                .bind(owner_id)
+                .execute(pool)
+                .await?;
+            }
+            return Ok(created);
+        }
+
+        let now = Utc::now();
+        project.id = Uuid::new_v4();
+        project.slug = slugify(&project.name);
+        project.created_at = now;
+        project.updated_at = now;
+        let mut store = self.store.lock().unwrap();
+        store.projects.push(project.clone());
+        if let Some(owner_id) = owner_id {
+            store.members.push(ProjectMember {
+                project_id: project.id,
+                profile_id: owner_id,
+                role: "owner".to_string(),
+                created_at: now,
+            });
+        }
+        Ok(project)
+    }
+
+    pub async fn list_project_members(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Vec<ProjectMember>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, ProjectMember>(
+                "select project_id, profile_id, role, created_at from project_members where project_id = $1",
+            )
+            .bind(project_id)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .members
+            .iter()
+            .filter(|m| m.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    pub async fn has_project_access(
+        &self,
+        project_id: Uuid,
+        profile_id: Option<Uuid>,
+    ) -> Result<bool, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let Some(profile_id) = profile_id else {
+                return Ok(project_id == self.default_project_id);
+            };
+            let count = sqlx::query_scalar::<_, i64>(
+                "select count(*) from project_members where project_id = $1 and profile_id = $2",
+            )
+            .bind(project_id)
+            .bind(profile_id)
+            .fetch_one(pool)
+            .await?;
+            return Ok(count > 0);
+        }
+
+        let Some(profile_id) = profile_id else {
+            return Ok(project_id == self.default_project_id);
+        };
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .members
+            .iter()
+            .any(|m| m.project_id == project_id && m.profile_id == profile_id))
+    }
+
+    pub async fn create_test_definition(
+        &self,
+        definition: &TestDefinition,
+    ) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                insert into test_definitions
+                  (id, project_id, name, description, image, commands, executor_id, labels, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                "#,
+            )
+            .bind(definition.id)
+            .bind(definition.project_id)
+            .bind(&definition.name)
+            .bind(&definition.description)
+            .bind(&definition.image)
+            .bind(Json(&definition.commands))
+            .bind(definition.executor_id)
+            .bind(Json(&definition.labels))
+            .bind(definition.created_at)
+            .bind(definition.updated_at)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.definitions.push(definition.clone());
+        Ok(())
+    }
+
+    pub async fn update_test_definition(
+        &self,
+        definition: &TestDefinition,
+    ) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                update test_definitions
+                set name = $2, description = $3, image = $4, commands = $5, executor_id = $6, labels = $7, updated_at = $8
+                where id = $1
+                "#,
+            )
+            .bind(definition.id)
+            .bind(&definition.name)
+            .bind(&definition.description)
+            .bind(&definition.image)
+            .bind(Json(&definition.commands))
+            .bind(definition.executor_id)
+            .bind(Json(&definition.labels))
+            .bind(definition.updated_at)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(existing) = store.definitions.iter_mut().find(|d| d.id == definition.id) {
+            *existing = definition.clone();
+        }
+        Ok(())
+    }
+
+    pub async fn get_test_definition(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<TestDefinition>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, TestDefinitionRow>(
+                r#"
+                select id, project_id, name, description, image, commands, executor_id, labels, created_at, updated_at
+                from test_definitions where id = $1
+                "#,
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .map(Into::into));
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store.definitions.iter().find(|d| d.id == id).cloned())
+    }
+
+    pub async fn list_test_definitions(
+        &self,
+        project_id: Option<Uuid>,
+        _profile_id: Option<Uuid>,
+    ) -> Result<Vec<TestDefinition>, anyhow::Error> {
+        let project_id = project_id.unwrap_or(self.default_project_id);
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, TestDefinitionRow>(
+                r#"
+                select id, project_id, name, description, image, commands, executor_id, labels, created_at, updated_at
+                from test_definitions where project_id = $1 order by created_at desc
+                "#,
+            )
+            .bind(project_id)
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect());
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .definitions
+            .iter()
+            .filter(|d| d.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    pub async fn delete_test_definition(&self, id: Uuid) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("delete from test_definitions where id = $1")
+                .bind(id)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.definitions.retain(|d| d.id != id);
+        Ok(())
+    }
+
+    pub async fn create_test_run(&self, run: &TestRun) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                insert into test_runs
+                  (id, project_id, definition_id, suite_id, executor_id, agent_id, status, result, error, queued_at, started_at, finished_at, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                "#,
+            )
+            .bind(run.id)
+            .bind(run.project_id)
+            .bind(run.definition_id)
+            .bind(run.suite_id)
+            .bind(run.executor_id)
+            .bind(run.agent_id)
+            .bind(&run.status)
+            .bind(&run.result)
+            .bind(&run.error)
+            .bind(run.queued_at)
+            .bind(run.started_at)
+            .bind(run.finished_at)
+            .bind(run.created_at)
+            .bind(run.updated_at)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.runs.push(run.clone());
+        Ok(())
+    }
+
+    pub async fn update_test_run(&self, run: &TestRun) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                update test_runs
+                set definition_id = $2, suite_id = $3, executor_id = $4, agent_id = $5,
+                    status = $6, result = $7, error = $8, started_at = $9, finished_at = $10, updated_at = $11
+                where id = $1
+                "#,
+            )
+            .bind(run.id)
+            .bind(run.definition_id)
+            .bind(run.suite_id)
+            .bind(run.executor_id)
+            .bind(run.agent_id)
+            .bind(&run.status)
+            .bind(&run.result)
+            .bind(&run.error)
+            .bind(run.started_at)
+            .bind(run.finished_at)
+            .bind(run.updated_at)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(existing) = store.runs.iter_mut().find(|r| r.id == run.id) {
+            *existing = run.clone();
+        }
+        Ok(())
+    }
+
+    pub async fn list_test_runs(
+        &self,
+        project_id: Option<Uuid>,
+        _profile_id: Option<Uuid>,
+    ) -> Result<Vec<TestRun>, anyhow::Error> {
+        let project_id = project_id.unwrap_or(self.default_project_id);
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, TestRunRow>(
+                r#"
+                select id, project_id, definition_id, suite_id, executor_id, agent_id, status, result, error,
+                       queued_at, started_at, finished_at, created_at, updated_at
+                from test_runs where project_id = $1 order by created_at desc
+                "#,
+            )
+            .bind(project_id)
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect());
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .runs
+            .iter()
+            .filter(|r| r.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    pub async fn count_project_runs(&self, project_id: Uuid) -> Result<usize, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let count = sqlx::query_scalar::<_, i64>(
+                "select count(*) from test_runs where project_id = $1",
+            )
+            .bind(project_id)
+            .fetch_one(pool)
+            .await?;
+            return Ok(count as usize);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .runs
+            .iter()
+            .filter(|r| r.project_id == project_id)
+            .count())
+    }
+
+    pub async fn get_test_run(&self, id: Uuid) -> Result<Option<TestRun>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, TestRunRow>(
+                r#"
+                select id, project_id, definition_id, suite_id, executor_id, agent_id, status, result, error,
+                       queued_at, started_at, finished_at, created_at, updated_at
+                from test_runs where id = $1
+                "#,
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .map(Into::into));
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store.runs.iter().find(|r| r.id == id).cloned())
+    }
+
+    pub async fn claim_next_run(
+        &self,
+        project_id: Uuid,
+        agent_id: Uuid,
+    ) -> Result<Option<TestRun>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, TestRunRow>(
+                r#"
+                update test_runs
+                set agent_id = $2, status = 'running', started_at = now(), updated_at = now()
+                where id = (
+                    select id from test_runs
+                    where project_id = $1 and status = 'queued' and agent_id is null
+                    order by queued_at asc
+                    for update skip locked
+                    limit 1
+                )
+                returning id, project_id, definition_id, suite_id, executor_id, agent_id, status, result, error,
+                          queued_at, started_at, finished_at, created_at, updated_at
+                "#,
+            )
+            .bind(project_id)
+            .bind(agent_id)
+            .fetch_optional(pool)
+            .await?
+            .map(Into::into));
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(run) = store
+            .runs
+            .iter_mut()
+            .filter(|r| r.project_id == project_id && r.status == "queued" && r.agent_id.is_none())
+            .min_by_key(|r| r.queued_at)
+        {
+            run.agent_id = Some(agent_id);
+            run.status = "running".to_string();
+            run.started_at = Some(Utc::now());
+            run.updated_at = Utc::now();
+            return Ok(Some(run.clone()));
+        }
+        Ok(None)
+    }
+
+    pub async fn list_executors(&self, project_id: Uuid) -> Result<Vec<Executor>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Executor>(
+                r#"
+                select id, project_id, name, executor_type, image, config, status, created_at, updated_at
+                from executors where project_id = $1 order by created_at desc
+                "#,
+            )
+            .bind(project_id)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .executors
+            .iter()
+            .filter(|e| e.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    pub async fn create_executor(&self, executor: Executor) -> Result<Executor, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Executor>(
+                r#"
+                insert into executors
+                  (id, project_id, name, executor_type, image, config, status, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                returning id, project_id, name, executor_type, image, config, status, created_at, updated_at
+                "#,
+            )
+            .bind(executor.id)
+            .bind(executor.project_id)
+            .bind(&executor.name)
+            .bind(&executor.executor_type)
+            .bind(&executor.image)
+            .bind(&executor.config)
+            .bind(&executor.status)
+            .bind(executor.created_at)
+            .bind(executor.updated_at)
+            .fetch_one(pool)
+            .await?);
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.executors.push(executor.clone());
+        Ok(executor)
+    }
+
+    pub async fn get_executor(&self, id: Uuid) -> Result<Option<Executor>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Executor>(
+                r#"
+                select id, project_id, name, executor_type, image, config, status, created_at, updated_at
+                from executors where id = $1
+                "#,
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store.executors.iter().find(|e| e.id == id).cloned())
+    }
+
+    pub async fn update_executor(&self, executor: Executor) -> Result<Executor, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Executor>(
+                r#"
+                update executors
+                set name = $2, executor_type = $3, image = $4, config = $5, status = $6, updated_at = $7
+                where id = $1
+                returning id, project_id, name, executor_type, image, config, status, created_at, updated_at
+                "#,
+            )
+            .bind(executor.id)
+            .bind(&executor.name)
+            .bind(&executor.executor_type)
+            .bind(&executor.image)
+            .bind(&executor.config)
+            .bind(&executor.status)
+            .bind(executor.updated_at)
+            .fetch_one(pool)
+            .await?);
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(existing) = store.executors.iter_mut().find(|e| e.id == executor.id) {
+            *existing = executor.clone();
+        }
+        Ok(executor)
+    }
+
+    pub async fn delete_executor(&self, id: Uuid) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("delete from executors where id = $1")
+                .bind(id)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.executors.retain(|e| e.id != id);
+        Ok(())
+    }
+
+    pub async fn list_test_suites(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Vec<TestSuite>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let rows = sqlx::query_as::<_, TestSuiteRow>(
+                "select id, project_id, name, description, created_at, updated_at from test_suites where project_id = $1 order by created_at desc",
+            )
+            .bind(project_id)
+            .fetch_all(pool)
+            .await?;
+            let mut suites = Vec::with_capacity(rows.len());
+            for row in rows {
+                suites.push(self.test_suite_from_row(pool, row).await?);
+            }
+            return Ok(suites);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .suites
+            .iter()
+            .filter(|s| s.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    pub async fn create_test_suite(&self, suite: TestSuite) -> Result<TestSuite, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let mut tx = pool.begin().await?;
+            let row = sqlx::query_as::<_, TestSuiteRow>(
+                r#"
+                insert into test_suites (id, project_id, name, description, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, $6)
+                returning id, project_id, name, description, created_at, updated_at
+                "#,
+            )
+            .bind(suite.id)
+            .bind(suite.project_id)
+            .bind(&suite.name)
+            .bind(&suite.description)
+            .bind(suite.created_at)
+            .bind(suite.updated_at)
+            .fetch_one(&mut *tx)
+            .await?;
+            for (position, definition_id) in suite.test_definition_ids.iter().enumerate() {
+                sqlx::query(
+                    "insert into test_suite_definitions (suite_id, definition_id, position) values ($1, $2, $3)",
+                )
+                .bind(suite.id)
+                .bind(definition_id)
+                .bind(position as i32)
+                .execute(&mut *tx)
+                .await?;
+            }
+            tx.commit().await?;
+            return self.test_suite_from_row(pool, row).await;
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.suites.push(suite.clone());
+        Ok(suite)
+    }
+
+    pub async fn get_test_suite(&self, id: Uuid) -> Result<Option<TestSuite>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let row = sqlx::query_as::<_, TestSuiteRow>(
+                "select id, project_id, name, description, created_at, updated_at from test_suites where id = $1",
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+            if let Some(row) = row {
+                return Ok(Some(self.test_suite_from_row(pool, row).await?));
+            }
+            return Ok(None);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store.suites.iter().find(|s| s.id == id).cloned())
+    }
+
+    pub async fn update_test_suite(&self, suite: TestSuite) -> Result<TestSuite, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let mut tx = pool.begin().await?;
+            let row = sqlx::query_as::<_, TestSuiteRow>(
+                r#"
+                update test_suites
+                set name = $2, description = $3, updated_at = $4
+                where id = $1
+                returning id, project_id, name, description, created_at, updated_at
+                "#,
+            )
+            .bind(suite.id)
+            .bind(&suite.name)
+            .bind(&suite.description)
+            .bind(suite.updated_at)
+            .fetch_one(&mut *tx)
+            .await?;
+            sqlx::query("delete from test_suite_definitions where suite_id = $1")
+                .bind(suite.id)
+                .execute(&mut *tx)
+                .await?;
+            for (position, definition_id) in suite.test_definition_ids.iter().enumerate() {
+                sqlx::query(
+                    "insert into test_suite_definitions (suite_id, definition_id, position) values ($1, $2, $3)",
+                )
+                .bind(suite.id)
+                .bind(definition_id)
+                .bind(position as i32)
+                .execute(&mut *tx)
+                .await?;
+            }
+            tx.commit().await?;
+            return self.test_suite_from_row(pool, row).await;
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(existing) = store.suites.iter_mut().find(|s| s.id == suite.id) {
+            *existing = suite.clone();
+        }
+        Ok(suite)
+    }
+
+    pub async fn delete_test_suite(&self, id: Uuid) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("delete from test_suites where id = $1")
+                .bind(id)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.suites.retain(|s| s.id != id);
+        Ok(())
+    }
+
+    async fn test_suite_from_row(
+        &self,
+        pool: &PgPool,
+        row: TestSuiteRow,
+    ) -> Result<TestSuite, anyhow::Error> {
+        let test_definition_ids = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            select definition_id
+            from test_suite_definitions
+            where suite_id = $1
+            order by position asc
+            "#,
+        )
+        .bind(row.id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(TestSuite {
+            id: row.id,
+            project_id: row.project_id,
+            name: row.name,
+            description: row.description,
+            test_definition_ids,
+            execution_mode: "sequential".to_string(),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
+
+    pub async fn create_agent_token(
+        &self,
+        project_id: Uuid,
+        name: String,
+    ) -> Result<AgentTokenCreated, anyhow::Error> {
+        let token = format!("stc_{}", Uuid::new_v4().simple());
+        let now = Utc::now();
+        let record = AgentToken {
+            id: Uuid::new_v4(),
+            project_id,
+            name: name.clone(),
+            token_hash: hash_token(&token),
+            last_used_at: None,
+            revoked_at: None,
+            created_at: now,
+        };
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                insert into agent_tokens (id, project_id, name, token_hash, last_used_at, revoked_at, created_at)
+                values ($1, $2, $3, $4, $5, $6, $7)
+                "#,
+            )
+            .bind(record.id)
+            .bind(record.project_id)
+            .bind(&record.name)
+            .bind(&record.token_hash)
+            .bind(record.last_used_at)
+            .bind(record.revoked_at)
+            .bind(record.created_at)
+            .execute(pool)
+            .await?;
+            return Ok(AgentTokenCreated {
+                id: record.id,
+                project_id,
+                name,
+                token,
+                created_at: now,
+            });
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.agent_tokens.push(record.clone());
+        Ok(AgentTokenCreated {
+            id: record.id,
+            project_id,
+            name,
+            token,
+            created_at: now,
+        })
+    }
+
+    pub async fn list_agent_tokens(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Vec<AgentToken>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, AgentToken>(
+                r#"
+                select id, project_id, name, token_hash, last_used_at, revoked_at, created_at
+                from agent_tokens where project_id = $1 order by created_at desc
+                "#,
+            )
+            .bind(project_id)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .agent_tokens
+            .iter()
+            .filter(|t| t.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    pub async fn count_active_agent_tokens(
+        &self,
+        project_id: Uuid,
+    ) -> Result<usize, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let count = sqlx::query_scalar::<_, i64>(
+                "select count(*) from agent_tokens where project_id = $1 and revoked_at is null",
+            )
+            .bind(project_id)
+            .fetch_one(pool)
+            .await?;
+            return Ok(count as usize);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .agent_tokens
+            .iter()
+            .filter(|t| t.project_id == project_id && t.revoked_at.is_none())
+            .count())
+    }
+
+    pub async fn revoke_agent_token(&self, id: Uuid) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("update agent_tokens set revoked_at = now() where id = $1")
+                .bind(id)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(token) = store.agent_tokens.iter_mut().find(|t| t.id == id) {
+            token.revoked_at = Some(Utc::now());
+        }
+        Ok(())
+    }
+
+    pub async fn authenticate_agent_token(
+        &self,
+        token: &str,
+    ) -> Result<Option<AgentToken>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let token_hash = hash_token(token);
+            let record = sqlx::query_as::<_, AgentToken>(
+                r#"
+                update agent_tokens
+                set last_used_at = now()
+                where token_hash = $1 and revoked_at is null
+                returning id, project_id, name, token_hash, last_used_at, revoked_at, created_at
+                "#,
+            )
+            .bind(token_hash)
+            .fetch_optional(pool)
+            .await?;
+            return Ok(record);
+        }
+
+        let mut store = self.store.lock().unwrap();
+        let token_hash = hash_token(token);
+        if let Some(record) = store
+            .agent_tokens
+            .iter_mut()
+            .find(|t| t.token_hash == token_hash && t.revoked_at.is_none())
+        {
+            record.last_used_at = Some(Utc::now());
+            return Ok(Some(record.clone()));
+        }
+        Ok(None)
+    }
+
+    pub async fn check_in_agent(
+        &self,
+        token: &AgentToken,
+        name: String,
+        version: Option<String>,
+        status: String,
+    ) -> Result<Agent, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            let existing_id = sqlx::query_scalar::<_, Uuid>(
+                "select id from agents where token_id = $1 and name = $2 order by created_at asc limit 1",
+            )
+            .bind(token.id)
+            .bind(&name)
+            .fetch_optional(pool)
+            .await?;
+
+            if let Some(existing_id) = existing_id {
+                return Ok(sqlx::query_as::<_, Agent>(
+                    r#"
+                    update agents
+                    set version = $2, status = $3, last_seen_at = now(), updated_at = now()
+                    where id = $1
+                    returning id, project_id, token_id, name, version, status, last_seen_at, created_at, updated_at
+                    "#,
+                )
+                .bind(existing_id)
+                .bind(&version)
+                .bind(&status)
+                .fetch_one(pool)
+                .await?);
+            }
+
+            return Ok(sqlx::query_as::<_, Agent>(
+                r#"
+                insert into agents (project_id, token_id, name, version, status, last_seen_at)
+                values ($1, $2, $3, $4, $5, now())
+                returning id, project_id, token_id, name, version, status, last_seen_at, created_at, updated_at
+                "#,
+            )
+            .bind(token.project_id)
+            .bind(token.id)
+            .bind(&name)
+            .bind(&version)
+            .bind(&status)
+            .fetch_one(pool)
+            .await?);
+        }
+
+        let now = Utc::now();
+        let mut store = self.store.lock().unwrap();
+        if let Some(agent) = store
+            .agents
+            .iter_mut()
+            .find(|a| a.token_id == Some(token.id) && a.name == name)
+        {
+            agent.version = version;
+            agent.status = status;
+            agent.last_seen_at = Some(now);
+            agent.updated_at = now;
+            return Ok(agent.clone());
+        }
+        let agent = Agent {
+            id: Uuid::new_v4(),
+            project_id: token.project_id,
+            token_id: Some(token.id),
+            name,
+            version,
+            status,
+            last_seen_at: Some(now),
+            created_at: now,
+            updated_at: now,
+        };
+        store.agents.push(agent.clone());
+        Ok(agent)
+    }
+
+    pub async fn list_agents(&self, project_id: Uuid) -> Result<Vec<Agent>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Agent>(
+                r#"
+                select id, project_id, token_id, name, version, status, last_seen_at, created_at, updated_at
+                from agents where project_id = $1 order by last_seen_at desc nulls last
+                "#,
+            )
+            .bind(project_id)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .agents
+            .iter()
+            .filter(|a| a.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    pub async fn list_plans(&self) -> Result<Vec<Plan>, anyhow::Error> {
+        let store = self.store.lock().unwrap();
+        Ok(store.plans.clone())
+    }
+
+    pub async fn get_plan_by_slug(&self, slug: &str) -> Result<Option<Plan>, anyhow::Error> {
+        let store = self.store.lock().unwrap();
+        Ok(store.plans.iter().find(|p| p.slug == slug).cloned())
+    }
+
+    pub async fn create_organization(
+        &self,
+        organization: &Organization,
+    ) -> Result<(), anyhow::Error> {
+        let mut store = self.store.lock().unwrap();
+        store.organizations.push(organization.clone());
+        Ok(())
+    }
+
+    pub async fn get_organization_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<Organization>, anyhow::Error> {
+        let store = self.store.lock().unwrap();
+        Ok(store.organizations.iter().find(|o| o.id == id).cloned())
+    }
+
+    pub async fn get_organization_by_stripe_customer_id(
+        &self,
+        stripe_customer_id: &str,
+    ) -> Result<Option<Organization>, anyhow::Error> {
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .organizations
+            .iter()
+            .find(|o| o.stripe_customer_id.as_deref() == Some(stripe_customer_id))
+            .cloned())
+    }
+
+    pub async fn update_organization(
+        &self,
+        organization: &Organization,
+    ) -> Result<(), anyhow::Error> {
+        let mut store = self.store.lock().unwrap();
+        if let Some(existing) = store
+            .organizations
+            .iter_mut()
+            .find(|o| o.id == organization.id)
+        {
+            *existing = organization.clone();
+        }
+        Ok(())
+    }
+
+    pub async fn create_subscription(
+        &self,
+        subscription: &OrgSubscription,
+    ) -> Result<(), anyhow::Error> {
+        let mut store = self.store.lock().unwrap();
+        store.subscriptions.push(subscription.clone());
+        Ok(())
+    }
+
+    pub async fn get_subscription_by_stripe_id(
+        &self,
+        stripe_subscription_id: &str,
+    ) -> Result<Option<OrgSubscription>, anyhow::Error> {
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .subscriptions
+            .iter()
+            .find(|s| s.stripe_subscription_id == stripe_subscription_id)
+            .cloned())
+    }
+
+    pub async fn get_subscription_by_organization_id(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<Option<OrgSubscription>, anyhow::Error> {
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .subscriptions
+            .iter()
+            .find(|s| s.organization_id == organization_id)
+            .cloned())
+    }
+
+    pub async fn update_subscription(
+        &self,
+        subscription: &OrgSubscription,
+    ) -> Result<(), anyhow::Error> {
+        let mut store = self.store.lock().unwrap();
+        if let Some(existing) = store
+            .subscriptions
+            .iter_mut()
+            .find(|s| s.id == subscription.id)
+        {
+            *existing = subscription.clone();
+        }
+        Ok(())
+    }
+}
+
+pub fn hash_token(token: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    token.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
+fn slugify(name: &str) -> String {
+    let slug: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    slug.trim_matches('-')
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn default_plans() -> Vec<Plan> {
+    let now = Utc::now();
+    vec![
+        Plan {
             id: Uuid::new_v4(),
             slug: "free".to_string(),
             price_cents: 0,
             features: serde_json::json!({
-                "max_tests": 5,
-                "max_runs_per_month": 100,
+                "max_projects": 1,
+                "cloud_agent_tokens": 1,
+                "seats": 1,
+                "log_retention_days": 7,
+                "result_storage_gb": 1,
                 "support": "community"
             }),
             stripe_price_id: std::env::var("STRIPE_FREE_PRICE_ID").ok(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        });
-
-        // Pro plan
-        plans.push(Plan {
+            created_at: now,
+            updated_at: now,
+        },
+        Plan {
             id: Uuid::new_v4(),
             slug: "pro".to_string(),
-            price_cents: 2900, // $29.00
+            price_cents: 2900,
             features: serde_json::json!({
-                "max_tests": "unlimited",
-                "max_runs_per_month": "unlimited",
+                "max_projects": "unlimited",
+                "cloud_agent_tokens": 10,
+                "seats": 5,
+                "log_retention_days": 30,
+                "result_storage_gb": 25,
                 "support": "priority",
-                "advanced_analytics": true,
-                "team_collaboration": true
+                "private_cloud_agents": true,
+                "audit_log": true
             }),
             stripe_price_id: std::env::var("STRIPE_PRO_PRICE_ID").ok(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        });
-
-        Ok(())
-    }
-
-    // Test Definition CRUD
-    pub async fn create_test_definition(&self, definition: &SaasTestDefinition) -> Result<(), anyhow::Error> {
-        let mut defs = self.test_definitions.lock().unwrap();
-        defs.push(definition.clone());
-        Ok(())
-    }
-
-    pub async fn get_test_definition(&self, id: Uuid) -> Result<Option<SaasTestDefinition>, anyhow::Error> {
-        let defs = self.test_definitions.lock().unwrap();
-        Ok(defs.iter().find(|d| d.id == id).cloned())
-    }
-
-    pub async fn list_test_definitions(&self, _user_id: Option<Uuid>, _organization_id: Option<Uuid>) -> Result<Vec<SaasTestDefinition>, anyhow::Error> {
-        let defs = self.test_definitions.lock().unwrap();
-        Ok(defs.clone())
-    }
-
-    pub async fn delete_test_definition(&self, id: Uuid) -> Result<(), anyhow::Error> {
-        let mut defs = self.test_definitions.lock().unwrap();
-        defs.retain(|d| d.id != id);
-        Ok(())
-    }
-
-    // Test Run CRUD
-    pub async fn create_test_run(&self, run: &SaasTestRun) -> Result<(), anyhow::Error> {
-        let mut runs = self.test_runs.lock().unwrap();
-        runs.push(run.clone());
-        Ok(())
-    }
-
-    pub async fn list_test_runs(&self, _user_id: Option<Uuid>, _organization_id: Option<Uuid>) -> Result<Vec<SaasTestRun>, anyhow::Error> {
-        let runs = self.test_runs.lock().unwrap();
-        Ok(runs.clone())
-    }
-
-    pub async fn get_test_run(&self, id: Uuid) -> Result<Option<SaasTestRun>, anyhow::Error> {
-        let runs = self.test_runs.lock().unwrap();
-        Ok(runs.iter().find(|r| r.id == id).cloned())
-    }
-
-    // Plan CRUD
-    pub async fn list_plans(&self) -> Result<Vec<Plan>, anyhow::Error> {
-        let plans = self.plans.lock().unwrap();
-        Ok(plans.clone())
-    }
-
-    pub async fn get_plan_by_slug(&self, slug: &str) -> Result<Option<Plan>, anyhow::Error> {
-        let plans = self.plans.lock().unwrap();
-        Ok(plans.iter().find(|p| p.slug == slug).cloned())
-    }
-
-    // Organization CRUD
-    pub async fn create_organization(&self, organization: &Organization) -> Result<(), anyhow::Error> {
-        let mut orgs = self.organizations.lock().unwrap();
-        orgs.push(organization.clone());
-        Ok(())
-    }
-
-    pub async fn get_organization_by_id(&self, id: Uuid) -> Result<Option<Organization>, anyhow::Error> {
-        let orgs = self.organizations.lock().unwrap();
-        Ok(orgs.iter().find(|o| o.id == id).cloned())
-    }
-
-    pub async fn get_organization_by_stripe_customer_id(&self, stripe_customer_id: &str) -> Result<Option<Organization>, anyhow::Error> {
-        let orgs = self.organizations.lock().unwrap();
-        Ok(orgs.iter().find(|o| o.stripe_customer_id.as_ref() == Some(&stripe_customer_id.to_string())).cloned())
-    }
-
-    pub async fn update_organization(&self, organization: &Organization) -> Result<(), anyhow::Error> {
-        let mut orgs = self.organizations.lock().unwrap();
-        if let Some(pos) = orgs.iter().position(|o| o.id == organization.id) {
-            orgs[pos] = organization.clone();
-        }
-        Ok(())
-    }
-
-    // Subscription CRUD
-    pub async fn create_subscription(&self, subscription: &OrgSubscription) -> Result<(), anyhow::Error> {
-        let mut subs = self.subscriptions.lock().unwrap();
-        subs.push(subscription.clone());
-        Ok(())
-    }
-
-    pub async fn get_subscription_by_stripe_id(&self, stripe_subscription_id: &str) -> Result<Option<OrgSubscription>, anyhow::Error> {
-        let subs = self.subscriptions.lock().unwrap();
-        Ok(subs.iter().find(|s| s.stripe_subscription_id == stripe_subscription_id).cloned())
-    }
-
-    pub async fn get_subscription_by_organization_id(&self, organization_id: Uuid) -> Result<Option<OrgSubscription>, anyhow::Error> {
-        let subs = self.subscriptions.lock().unwrap();
-        Ok(subs.iter().find(|s| s.organization_id == organization_id).cloned())
-    }
-
-    pub async fn update_subscription(&self, subscription: &OrgSubscription) -> Result<(), anyhow::Error> {
-        let mut subs = self.subscriptions.lock().unwrap();
-        if let Some(pos) = subs.iter().position(|s| s.id == subscription.id) {
-            subs[pos] = subscription.clone();
-        }
-        Ok(())
-    }
+            created_at: now,
+            updated_at: now,
+        },
+    ]
 }
 
 #[cfg(test)]
@@ -273,107 +1538,111 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_database_initialization() {
-        let db = Database::new("test://").await.expect("Failed to create database");
-        let plans = db.list_plans().await.expect("Failed to list plans");
-        
+    async fn initializes_default_project_and_plans() {
+        let db = Database::new("test://").await.unwrap();
+        let projects = db.list_projects(None).await.unwrap();
+        let plans = db.list_plans().await.unwrap();
+
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].slug, "default");
         assert_eq!(plans.len(), 2);
         assert!(plans.iter().any(|p| p.slug == "free"));
         assert!(plans.iter().any(|p| p.slug == "pro"));
     }
 
     #[tokio::test]
-    async fn test_plan_model_serialization() {
-        let plan = Plan {
+    async fn definition_crud_is_project_scoped() {
+        let db = Database::new("test://").await.unwrap();
+        let now = Utc::now();
+        let definition = TestDefinition {
             id: Uuid::new_v4(),
-            slug: "test".to_string(),
-            price_cents: 1000,
-            features: serde_json::json!({
-                "feature1": true,
-                "feature2": "value"
-            }),
-            stripe_price_id: Some("price_test123".to_string()),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            project_id: db.default_project_id(),
+            name: "API smoke".to_string(),
+            description: Some("basic endpoint coverage".to_string()),
+            image: "node:20".to_string(),
+            commands: vec!["pnpm test".to_string()],
+            executor_id: None,
+            labels: vec!["api".to_string()],
+            created_at: now,
+            updated_at: now,
         };
 
-        // Test serialization
-        let json = serde_json::to_string(&plan).expect("Failed to serialize plan");
-        assert!(json.contains("test"));
-        assert!(json.contains("1000"));
+        db.create_test_definition(&definition).await.unwrap();
+        assert_eq!(
+            db.list_test_definitions(Some(definition.project_id), None)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            db.get_test_definition(definition.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .image,
+            "node:20"
+        );
 
-        // Test deserialization
-        let deserialized: Plan = serde_json::from_str(&json).expect("Failed to deserialize plan");
-        assert_eq!(deserialized.slug, "test");
-        assert_eq!(deserialized.price_cents, 1000);
+        db.delete_test_definition(definition.id).await.unwrap();
+        assert!(db
+            .get_test_definition(definition.id)
+            .await
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
-    async fn test_get_plan_by_slug() {
-        let db = Database::new("test://").await.expect("Failed to create database");
-        
-        // Test finding existing plan
-        let free_plan = db.get_plan_by_slug("free").await.expect("Failed to get plan");
-        assert!(free_plan.is_some());
-        assert_eq!(free_plan.unwrap().price_cents, 0);
-
-        let pro_plan = db.get_plan_by_slug("pro").await.expect("Failed to get plan");
-        assert!(pro_plan.is_some());
-        assert_eq!(pro_plan.unwrap().price_cents, 2900);
-
-        // Test non-existent plan
-        let nonexistent = db.get_plan_by_slug("nonexistent").await.expect("Failed to get plan");
-        assert!(nonexistent.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_default_plan_features() {
-        let db = Database::new("test://").await.expect("Failed to create database");
-        
-        let free_plan = db.get_plan_by_slug("free").await.expect("Failed to get plan").unwrap();
-        let features = free_plan.features;
-        assert_eq!(features["max_tests"], 5);
-        assert_eq!(features["support"], "community");
-
-        let pro_plan = db.get_plan_by_slug("pro").await.expect("Failed to get plan").unwrap();
-        let features = pro_plan.features;
-        assert_eq!(features["max_tests"], "unlimited");
-        assert_eq!(features["support"], "priority");
-        assert_eq!(features["advanced_analytics"], true);
-    }
-
-    #[tokio::test]
-    async fn test_test_definition_crud() {
-        let db = Database::new("test://").await.expect("Failed to create database");
-        
-        let test_def = SaasTestDefinition {
+    async fn agent_token_checkin_and_claim_queue() {
+        let db = Database::new("test://").await.unwrap();
+        let token = db
+            .create_agent_token(db.default_project_id(), "cluster".to_string())
+            .await
+            .unwrap();
+        let auth = db
+            .authenticate_agent_token(&token.token)
+            .await
+            .unwrap()
+            .unwrap();
+        let agent = db
+            .check_in_agent(
+                &auth,
+                "agent-1".to_string(),
+                Some("0.1.0".to_string()),
+                "online".to_string(),
+            )
+            .await
+            .unwrap();
+        let now = Utc::now();
+        let run = TestRun {
             id: Uuid::new_v4(),
-            name: "Test Definition".to_string(),
-            description: Some("A test definition".to_string()),
-            code: "console.log('test')".to_string(),
-            language: "javascript".to_string(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            user_id: Some(Uuid::new_v4()),
-            organization_id: Some(Uuid::new_v4()),
-            is_public: false,
+            project_id: db.default_project_id(),
+            definition_id: None,
+            suite_id: None,
+            executor_id: None,
+            agent_id: None,
+            status: "queued".to_string(),
+            result: None,
+            error: None,
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            created_at: now,
+            updated_at: now,
         };
 
-        // Create
-        db.create_test_definition(&test_def).await.expect("Failed to create test definition");
-
-        // Read
-        let retrieved = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
-        assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().name, "Test Definition");
-
-        // List
-        let all_defs = db.list_test_definitions(None, None).await.expect("Failed to list test definitions");
-        assert_eq!(all_defs.len(), 1);
-
-        // Delete
-        db.delete_test_definition(test_def.id).await.expect("Failed to delete test definition");
-        let after_delete = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
-        assert!(after_delete.is_none());
+        db.create_test_run(&run).await.unwrap();
+        let claimed = db
+            .claim_next_run(db.default_project_id(), agent.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(claimed.status, "running");
+        assert_eq!(claimed.agent_id, Some(agent.id));
+        assert!(db
+            .claim_next_run(db.default_project_id(), agent.id)
+            .await
+            .unwrap()
+            .is_none());
     }
 }

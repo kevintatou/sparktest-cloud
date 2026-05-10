@@ -89,6 +89,10 @@ out
 tmp/
 temp/
 
+# Supabase local state
+supabase/.branches/
+supabase/.temp/
+
 # Cargo
 **/Cargo.lock
 target/

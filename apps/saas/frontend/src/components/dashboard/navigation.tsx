@@ -5,14 +5,12 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { 
   LayoutDashboard, FileText, Play, Server, Layers,
-  Users, Building2, BarChart3, Bell, Plug, CreditCard, Folder,
-  BookOpen, Monitor, GitBranch, User, ChevronRight, Settings
+  CreditCard, Folder, Radio, ChevronRight, Settings
 } from 'lucide-react';
 
 export type NavigationKey = 
   | 'dashboard' | 'definitions' | 'runs' | 'executors' | 'suites'
-  | 'teams' | 'users' | 'billing' | 'analytics' | 'monitoring' 
-  | 'integrations' | 'audit' | 'projects' | 'docs' | 'settings';
+  | 'projects' | 'agents' | 'billing' | 'settings';
 
 export interface NavigationProps {
   activeTab: NavigationKey;
@@ -34,27 +32,16 @@ const navigationGroups = [
     ]
   },
   {
-    title: 'Organization',
+    title: 'Cloud',
     items: [
       { key: 'projects', label: 'Projects', icon: Folder },
-      { key: 'teams', label: 'Teams', icon: Users },
-      { key: 'users', label: 'User Management', icon: User },
+      { key: 'agents', label: 'Agents', icon: Radio },
       { key: 'billing', label: 'Billing & Plans', icon: CreditCard },
-    ]
-  },
-  {
-    title: 'Analytics & Monitoring',
-    items: [
-      { key: 'analytics', label: 'Analytics', icon: BarChart3 },
-      { key: 'monitoring', label: 'Monitoring & Alerts', icon: Monitor },
-      { key: 'audit', label: 'Audit Logs', icon: BookOpen },
     ]
   },
   {
     title: 'Platform',
     items: [
-      { key: 'integrations', label: 'Integrations', icon: Plug },
-      { key: 'docs', label: 'API Documentation', icon: GitBranch },
       { key: 'settings', label: 'Settings', icon: Settings },
     ]
   }

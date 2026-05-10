@@ -12,15 +12,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("0.0.0.0:{}", port);
 
     info!("Starting SparkTest SaaS API server on {}", addr);
-    
-    // Use in-memory database for now (placeholder implementation)
-    let database = Database::new("placeholder").await?;
+
+    let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "memory://local".to_string());
+    let database = Database::new(&database_url).await?;
 
     let app = create_app(database);
     let listener = TcpListener::bind(&addr).await?;
-    
+
     info!("API server listening on {}", addr);
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }

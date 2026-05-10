@@ -36,7 +36,7 @@ export interface Run {
   name: string;
   image: string;
   command: string[];
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'queued' | 'pending' | 'running' | 'completed' | 'passed' | 'failed' | 'cancelled' | 'error';
   createdAt: string;
   definitionId: string;
   duration?: number;

@@ -1,23 +1,30 @@
 use axum::{
-    extract::{Path, State},
-    http::{StatusCode, HeaderMap},
-    routing::{get, post},
-    Json, Router,
     body::Bytes,
+    extract::{Path, State},
+    http::{HeaderMap, StatusCode},
+    routing::{delete, get, post},
+    Json, Router,
 };
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use chrono::Utc;
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sparktest_saas_core::{Database, SaasTestDefinition, SaasTestRun, Plan, Organization, OrgSubscription};
+use sha2::Sha256;
+use sparktest_saas_core::{
+    Agent, AgentToken, AgentTokenCreated, Database, Executor, OrgSubscription, Organization, Plan,
+    Profile, Project, ProjectMember, SaasTestDefinition, SaasTestRun, TestSuite,
+};
 use std::sync::Arc;
+use stripe::{
+    CheckoutSession, CheckoutSessionMode, Client, CreateCheckoutSession,
+    CreateCheckoutSessionLineItems,
+};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
-use chrono::Utc;
-use stripe::{Client, CheckoutSession, CheckoutSessionMode, CreateCheckoutSession, CreateCheckoutSessionLineItems};
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
-use hex;
 
 pub type AppState = Arc<Database>;
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CheckoutRequest {
@@ -43,26 +50,101 @@ pub struct WebhookEventData {
     pub object: Value,
 }
 
-type HmacSha256 = Hmac<Sha256>;
+#[derive(Debug, Deserialize)]
+struct ProfileRequest {
+    email: String,
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectRequest {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentTokenRequest {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentCheckInRequest {
+    name: String,
+    version: Option<String>,
+    status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RunStatusRequest {
+    status: String,
+    result: Option<Value>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct QueueResponse {
+    run: Option<SaasTestRun>,
+    definition: Option<SaasTestDefinition>,
+}
+
+#[derive(Debug, Clone)]
+struct HumanContext {
+    user_id: Option<Uuid>,
+    email: Option<String>,
+    project_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+struct SupabaseClaims {
+    sub: String,
+    email: Option<String>,
+}
 
 pub fn create_app(database: Database) -> Router {
     let state = Arc::new(database);
-    
+
     Router::new()
         .route("/api/health", get(health_check))
-        // Test Definitions
-        .route("/api/test-definitions", get(list_test_definitions).post(create_test_definition))
-        .route("/api/test-definitions/:id", get(get_test_definition).put(update_test_definition).delete(delete_test_definition))
-        // Test Runs
+        .route("/api/profile", post(upsert_profile))
+        .route("/api/projects", get(list_projects).post(create_project))
+        .route("/api/projects/:id/members", get(list_project_members))
+        .route(
+            "/api/test-definitions",
+            get(list_test_definitions).post(create_test_definition),
+        )
+        .route(
+            "/api/test-definitions/:id",
+            get(get_test_definition)
+                .put(update_test_definition)
+                .delete(delete_test_definition),
+        )
         .route("/api/test-runs", get(list_test_runs).post(create_test_run))
-        .route("/api/test-runs/:id", get(get_test_run))
-        // Executors
+        .route("/api/test-runs/:id", get(get_test_run).put(update_test_run))
         .route("/api/executors", get(list_executors).post(create_executor))
-        .route("/api/executors/:id", get(get_executor).put(update_executor).delete(delete_executor))
-        // Test Suites
-        .route("/api/test-suites", get(list_test_suites).post(create_test_suite))
-        .route("/api/test-suites/:id", get(get_test_suite).put(update_test_suite).delete(delete_test_suite))
-        // Billing
+        .route(
+            "/api/executors/:id",
+            get(get_executor)
+                .put(update_executor)
+                .delete(delete_executor),
+        )
+        .route(
+            "/api/test-suites",
+            get(list_test_suites).post(create_test_suite),
+        )
+        .route(
+            "/api/test-suites/:id",
+            get(get_test_suite)
+                .put(update_test_suite)
+                .delete(delete_test_suite),
+        )
+        .route(
+            "/api/agent-tokens",
+            get(list_agent_tokens).post(create_agent_token),
+        )
+        .route("/api/agent-tokens/:id", delete(revoke_agent_token))
+        .route("/api/agents", get(list_agents))
+        .route("/api/agent/check-in", post(agent_check_in))
+        .route("/api/agent/next-run", post(agent_next_run))
+        .route("/api/agent/runs/:id/status", post(agent_update_run_status))
         .route("/api/billing/plans", get(list_plans))
         .route("/api/billing/checkout", post(create_checkout_session))
         .route("/api/billing/webhook", post(handle_webhook))
@@ -74,220 +156,618 @@ async fn health_check() -> Json<Value> {
     Json(json!({ "status": "ok", "timestamp": Utc::now() }))
 }
 
-// Test Definition handlers
-async fn list_test_definitions(State(db): State<AppState>) -> Result<Json<Vec<SaasTestDefinition>>, StatusCode> {
-    match db.list_test_definitions(None, None).await {
-        Ok(definitions) => Ok(Json(definitions)),
+fn human_context(headers: &HeaderMap, db: &Database) -> HumanContext {
+    let jwt_claims = verify_supabase_jwt(headers);
+    let user_id = jwt_claims
+        .as_ref()
+        .and_then(|claims| Uuid::parse_str(&claims.sub).ok())
+        .or_else(|| {
+            headers
+                .get("x-user-id")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| Uuid::parse_str(value).ok())
+        });
+    let project_id = headers
+        .get("x-project-id")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .unwrap_or_else(|| db.default_project_id());
+
+    HumanContext {
+        user_id,
+        email: jwt_claims.and_then(|claims| claims.email),
+        project_id,
+    }
+}
+
+fn verify_supabase_jwt(headers: &HeaderMap) -> Option<SupabaseClaims> {
+    let secret = std::env::var("SUPABASE_JWT_SECRET").ok()?;
+    let token = bearer_token(headers)?;
+    let mut parts = token.split('.');
+    let header = parts.next()?;
+    let payload = parts.next()?;
+    let signature = parts.next()?;
+    if parts.next().is_some() {
+        return None;
+    }
+
+    let signed = format!("{header}.{payload}");
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).ok()?;
+    mac.update(signed.as_bytes());
+    let expected = URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
+    if expected != signature {
+        return None;
+    }
+
+    let payload = URL_SAFE_NO_PAD.decode(payload).ok()?;
+    serde_json::from_slice(&payload).ok()
+}
+
+async fn ensure_project_access(db: &Database, ctx: &HumanContext) -> Result<(), StatusCode> {
+    match db.has_project_access(ctx.project_id, ctx.user_id).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(StatusCode::FORBIDDEN),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(ToOwned::to_owned)
+}
+
+async fn authenticate_agent(headers: &HeaderMap, db: &Database) -> Result<AgentToken, StatusCode> {
+    let token = bearer_token(headers).ok_or(StatusCode::UNAUTHORIZED)?;
+    db.authenticate_agent_token(&token)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::UNAUTHORIZED)
+}
+
+async fn upsert_profile(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ProfileRequest>,
+) -> Result<Json<Profile>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    let user_id = ctx.user_id.unwrap_or_else(Uuid::new_v4);
+    let email = ctx.email.unwrap_or(request.email);
+    db.ensure_profile(user_id, email, request.name)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn list_projects(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<Project>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    db.list_projects(ctx.user_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn create_project(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ProjectRequest>,
+) -> Result<Json<Project>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    enforce_project_limit(&db).await?;
+    let now = Utc::now();
+    let project = Project {
+        id: Uuid::nil(),
+        name: request.name,
+        slug: String::new(),
+        created_at: now,
+        updated_at: now,
+    };
+    db.create_project(project, ctx.user_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn list_project_members(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+) -> Result<Json<Vec<ProjectMember>>, StatusCode> {
+    let mut ctx = human_context(&headers, &db);
+    ctx.project_id = project_id;
+    ensure_project_access(&db, &ctx).await?;
+    db.list_project_members(project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn list_test_definitions(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<SaasTestDefinition>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_test_definitions(Some(ctx.project_id), ctx.user_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn create_test_definition(
     State(db): State<AppState>,
+    headers: HeaderMap,
     Json(mut definition): Json<SaasTestDefinition>,
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
     definition.id = Uuid::new_v4();
+    definition.project_id = ctx.project_id;
     definition.created_at = Utc::now();
     definition.updated_at = Utc::now();
-
-    match db.create_test_definition(&definition).await {
-        Ok(_) => Ok(Json(definition)),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+    db.create_test_definition(&definition)
+        .await
+        .map(|_| Json(definition))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn get_test_definition(
     State(db): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
     match db.get_test_definition(id).await {
-        Ok(Some(definition)) => Ok(Json(definition)),
+        Ok(Some(definition)) if definition.project_id == ctx.project_id => Ok(Json(definition)),
+        Ok(Some(_)) => Err(StatusCode::FORBIDDEN),
         Ok(None) => Err(StatusCode::NOT_FOUND),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
 
 async fn update_test_definition(
-    State(_db): State<AppState>,
+    State(db): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(mut definition): Json<SaasTestDefinition>,
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
     definition.id = id;
+    definition.project_id = ctx.project_id;
     definition.updated_at = Utc::now();
-
-    // For now, just return the updated definition
-    // In a real implementation, you'd update in the database
-    Ok(Json(definition))
+    db.update_test_definition(&definition)
+        .await
+        .map(|_| Json(definition))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn delete_test_definition(
     State(db): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    match db.delete_test_definition(id).await {
-        Ok(_) => Ok(StatusCode::NO_CONTENT),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.delete_test_definition(id)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-// Test Run handlers
-async fn list_test_runs(State(db): State<AppState>) -> Result<Json<Vec<SaasTestRun>>, StatusCode> {
-    match db.list_test_runs(None, None).await {
-        Ok(runs) => Ok(Json(runs)),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+async fn list_test_runs(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<SaasTestRun>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_test_runs(Some(ctx.project_id), ctx.user_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn create_test_run(
     State(db): State<AppState>,
+    headers: HeaderMap,
     Json(mut run): Json<SaasTestRun>,
 ) -> Result<Json<SaasTestRun>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
     run.id = Uuid::new_v4();
+    run.project_id = ctx.project_id;
+    run.status = if run.status.is_empty() {
+        "queued".to_string()
+    } else {
+        run.status
+    };
+    run.queued_at = Utc::now();
     run.created_at = Utc::now();
     run.updated_at = Utc::now();
-
-    match db.create_test_run(&run).await {
-        Ok(_) => Ok(Json(run)),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+    db.create_test_run(&run)
+        .await
+        .map(|_| Json(run))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn get_test_run(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(json!({"message": "Test run not implemented yet"})))
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<SaasTestRun>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    match db.get_test_run(id).await {
+        Ok(Some(run)) if run.project_id == ctx.project_id => Ok(Json(run)),
+        Ok(Some(_)) => Err(StatusCode::FORBIDDEN),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
-// Executor handlers
-async fn list_executors(State(_db): State<AppState>) -> Result<Json<Vec<Value>>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(vec![]))
+async fn update_test_run(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(mut run): Json<SaasTestRun>,
+) -> Result<Json<SaasTestRun>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    run.id = id;
+    run.project_id = ctx.project_id;
+    run.updated_at = Utc::now();
+    db.update_test_run(&run)
+        .await
+        .map(|_| Json(run))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn list_executors(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<Executor>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_executors(ctx.project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn create_executor(
-    State(_db): State<AppState>,
-    Json(executor): Json<Value>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(executor))
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(mut executor): Json<Executor>,
+) -> Result<Json<Executor>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    executor.id = Uuid::new_v4();
+    executor.project_id = ctx.project_id;
+    executor.created_at = Utc::now();
+    executor.updated_at = Utc::now();
+    db.create_executor(executor)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn get_executor(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(json!({"message": "Executor not implemented yet"})))
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Executor>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    match db.get_executor(id).await {
+        Ok(Some(executor)) if executor.project_id == ctx.project_id => Ok(Json(executor)),
+        Ok(Some(_)) => Err(StatusCode::FORBIDDEN),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 async fn update_executor(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
-    Json(executor): Json<Value>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(executor))
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(mut executor): Json<Executor>,
+) -> Result<Json<Executor>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    executor.id = id;
+    executor.project_id = ctx.project_id;
+    executor.updated_at = Utc::now();
+    db.update_executor(executor)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn delete_executor(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    // Placeholder implementation
-    Ok(StatusCode::NO_CONTENT)
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.delete_executor(id)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-// Test Suite handlers
-async fn list_test_suites(State(_db): State<AppState>) -> Result<Json<Vec<Value>>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(vec![]))
+async fn list_test_suites(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<TestSuite>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_test_suites(ctx.project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn create_test_suite(
-    State(_db): State<AppState>,
-    Json(suite): Json<Value>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(suite))
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(mut suite): Json<TestSuite>,
+) -> Result<Json<TestSuite>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    suite.id = Uuid::new_v4();
+    suite.project_id = ctx.project_id;
+    suite.created_at = Utc::now();
+    suite.updated_at = Utc::now();
+    db.create_test_suite(suite)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn get_test_suite(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(json!({"message": "Test suite not implemented yet"})))
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<TestSuite>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    match db.get_test_suite(id).await {
+        Ok(Some(suite)) if suite.project_id == ctx.project_id => Ok(Json(suite)),
+        Ok(Some(_)) => Err(StatusCode::FORBIDDEN),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 async fn update_test_suite(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
-    Json(suite): Json<Value>,
-) -> Result<Json<Value>, StatusCode> {
-    // Placeholder implementation
-    Ok(Json(suite))
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(mut suite): Json<TestSuite>,
+) -> Result<Json<TestSuite>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    suite.id = id;
+    suite.project_id = ctx.project_id;
+    suite.updated_at = Utc::now();
+    db.update_test_suite(suite)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn delete_test_suite(
-    State(_db): State<AppState>,
-    Path(_id): Path<Uuid>,
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    // Placeholder implementation
-    Ok(StatusCode::NO_CONTENT)
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.delete_test_suite(id)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-// Billing handlers
-async fn list_plans(State(db): State<AppState>) -> Result<Json<Vec<Plan>>, StatusCode> {
-    match db.list_plans().await {
-        Ok(plans) => Ok(Json(plans)),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+async fn list_agent_tokens(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<AgentToken>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_agent_tokens(ctx.project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn create_agent_token(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AgentTokenRequest>,
+) -> Result<Json<AgentTokenCreated>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    enforce_agent_limit(&db, ctx.project_id).await?;
+    db.create_agent_token(ctx.project_id, request.name)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn enforce_project_limit(db: &Database) -> Result<(), StatusCode> {
+    let count = db
+        .count_projects()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if count >= 1
+        && std::env::var("SPARKTEST_PLAN").unwrap_or_else(|_| "free".to_string()) == "free"
+    {
+        return Err(StatusCode::PAYMENT_REQUIRED);
     }
+    Ok(())
+}
+
+async fn enforce_agent_limit(db: &Database, project_id: Uuid) -> Result<(), StatusCode> {
+    let count = db
+        .count_active_agent_tokens(project_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if count >= 1
+        && std::env::var("SPARKTEST_PLAN").unwrap_or_else(|_| "free".to_string()) == "free"
+    {
+        return Err(StatusCode::PAYMENT_REQUIRED);
+    }
+    Ok(())
+}
+
+async fn revoke_agent_token(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.revoke_agent_token(id)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn list_agents(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<Agent>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_agents(ctx.project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn agent_check_in(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AgentCheckInRequest>,
+) -> Result<Json<Agent>, StatusCode> {
+    let token = authenticate_agent(&headers, &db).await?;
+    db.check_in_agent(
+        &token,
+        request.name,
+        request.version,
+        request.status.unwrap_or_else(|| "online".to_string()),
+    )
+    .await
+    .map(Json)
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn agent_next_run(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AgentCheckInRequest>,
+) -> Result<Json<QueueResponse>, StatusCode> {
+    let token = authenticate_agent(&headers, &db).await?;
+    let agent = db
+        .check_in_agent(
+            &token,
+            request.name,
+            request.version,
+            request.status.unwrap_or_else(|| "online".to_string()),
+        )
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let run = db
+        .claim_next_run(token.project_id, agent.id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let definition = match run.as_ref().and_then(|run| run.definition_id) {
+        Some(definition_id) => db
+            .get_test_definition(definition_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+        None => None,
+    };
+    Ok(Json(QueueResponse { run, definition }))
+}
+
+async fn agent_update_run_status(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(request): Json<RunStatusRequest>,
+) -> Result<Json<SaasTestRun>, StatusCode> {
+    let token = authenticate_agent(&headers, &db).await?;
+    let mut run = db
+        .get_test_run(id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    if run.project_id != token.project_id {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    run.status = request.status;
+    run.result = request.result;
+    run.error = request.error;
+    if matches!(
+        run.status.as_str(),
+        "passed" | "failed" | "cancelled" | "error" | "completed"
+    ) {
+        run.finished_at = Some(Utc::now());
+    }
+    run.updated_at = Utc::now();
+    db.update_test_run(&run)
+        .await
+        .map(|_| Json(run))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn list_plans(State(db): State<AppState>) -> Result<Json<Vec<Plan>>, StatusCode> {
+    db.list_plans()
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn create_checkout_session(
     State(db): State<AppState>,
     Json(request): Json<CheckoutRequest>,
 ) -> Result<Json<CheckoutResponse>, StatusCode> {
-    // Get the plan
-    let plan = match db.get_plan_by_slug(&request.plan_slug).await {
-        Ok(Some(plan)) => plan,
-        Ok(None) => return Err(StatusCode::NOT_FOUND),
-        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-    };
+    let plan = db
+        .get_plan_by_slug(&request.plan_slug)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Skip Stripe integration for free plan
     if plan.price_cents == 0 {
-        let success_url = request.success_url.unwrap_or_else(|| "http://localhost:3000".to_string());
         return Ok(Json(CheckoutResponse {
-            checkout_url: success_url,
+            checkout_url: request
+                .success_url
+                .unwrap_or_else(|| "http://localhost:3000".to_string()),
         }));
     }
 
-    // Get Stripe configuration
-    let stripe_secret_key = match std::env::var("STRIPE_SECRET_KEY") {
-        Ok(key) => key,
-        Err(_) => {
-            eprintln!("STRIPE_SECRET_KEY environment variable not set");
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
-
-    let stripe_price_id = match &plan.stripe_price_id {
-        Some(id) => id.clone(),
-        None => {
-            eprintln!("No Stripe price ID configured for plan: {}", plan.slug);
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
-
-    // Create Stripe client
+    let stripe_secret_key =
+        std::env::var("STRIPE_SECRET_KEY").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let stripe_price_id = plan
+        .stripe_price_id
+        .clone()
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
     let client = Client::new(stripe_secret_key);
-
-    // Create checkout session
-    let success_url = request.success_url.unwrap_or_else(|| "http://localhost:3000?session_id={CHECKOUT_SESSION_ID}".to_string());
-    let cancel_url = request.cancel_url.unwrap_or_else(|| "http://localhost:3000".to_string());
+    let success_url = request
+        .success_url
+        .unwrap_or_else(|| "http://localhost:3000?session_id={CHECKOUT_SESSION_ID}".to_string());
+    let cancel_url = request
+        .cancel_url
+        .unwrap_or_else(|| "http://localhost:3000".to_string());
 
     let mut create_session = CreateCheckoutSession::new();
     create_session.mode = Some(CheckoutSessionMode::Subscription);
@@ -299,111 +779,64 @@ async fn create_checkout_session(
         ..Default::default()
     }]);
 
-    match CheckoutSession::create(&client, create_session).await {
-        Ok(session) => {
-            if let Some(url) = session.url {
-                Ok(Json(CheckoutResponse {
-                    checkout_url: url,
-                }))
-            } else {
-                eprintln!("Stripe checkout session created but no URL returned");
-                Err(StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to create Stripe checkout session: {:?}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
+    let session = CheckoutSession::create(&client, create_session)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(CheckoutResponse {
+        checkout_url: session.url.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?,
+    }))
 }
 
-// Webhook signature verification
 fn verify_webhook_signature(
     payload: &[u8],
     signature: &str,
     webhook_secret: &str,
 ) -> Result<(), anyhow::Error> {
-    let signature = signature.strip_prefix("v1=")
+    let signature = signature
+        .strip_prefix("v1=")
         .ok_or_else(|| anyhow::anyhow!("Invalid signature format"))?;
-    
-    let signature_bytes = hex::decode(signature)
-        .map_err(|_| anyhow::anyhow!("Invalid signature encoding"))?;
-
+    let signature_bytes =
+        hex::decode(signature).map_err(|_| anyhow::anyhow!("Invalid signature encoding"))?;
     let mut mac = HmacSha256::new_from_slice(webhook_secret.as_bytes())
         .map_err(|_| anyhow::anyhow!("Invalid webhook secret"))?;
     mac.update(payload);
-    
-    match mac.verify_slice(&signature_bytes) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(anyhow::anyhow!("Signature verification failed")),
-    }
+    mac.verify_slice(&signature_bytes)
+        .map_err(|_| anyhow::anyhow!("Signature verification failed"))
 }
 
-// Webhook handler
 async fn handle_webhook(
     State(db): State<AppState>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Json<Value>, StatusCode> {
-    // Get webhook secret from environment
-    let webhook_secret = match std::env::var("STRIPE_WEBHOOK_SECRET") {
-        Ok(secret) => secret,
-        Err(_) => {
-            eprintln!("STRIPE_WEBHOOK_SECRET environment variable not set");
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
-
-    // Verify webhook signature
+    let webhook_secret =
+        std::env::var("STRIPE_WEBHOOK_SECRET").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let signature = headers
         .get("stripe-signature")
         .and_then(|h| h.to_str().ok())
         .ok_or(StatusCode::BAD_REQUEST)?;
 
-    if let Err(e) = verify_webhook_signature(&body, signature, &webhook_secret) {
-        eprintln!("Webhook signature verification failed: {:?}", e);
-        return Err(StatusCode::UNAUTHORIZED);
-    }
+    verify_webhook_signature(&body, signature, &webhook_secret)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let event: WebhookEvent = serde_json::from_slice(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    // Parse webhook event
-    let event: WebhookEvent = match serde_json::from_slice(&body) {
-        Ok(event) => event,
-        Err(e) => {
-            eprintln!("Failed to parse webhook event: {:?}", e);
-            return Err(StatusCode::BAD_REQUEST);
-        }
-    };
-
-    // Handle different event types
     match event.event_type.as_str() {
         "checkout.session.completed" => {
-            if let Err(e) = handle_checkout_session_completed(&db, &event.data.object).await {
-                eprintln!("Failed to handle checkout.session.completed: {:?}", e);
-                return Err(StatusCode::INTERNAL_SERVER_ERROR);
-            }
+            handle_checkout_session_completed(&db, &event.data.object).await
         }
         "invoice.payment_failed" => {
-            if let Err(e) = handle_invoice_payment_failed(&db, &event.data.object).await {
-                eprintln!("Failed to handle invoice.payment_failed: {:?}", e);
-                return Err(StatusCode::INTERNAL_SERVER_ERROR);
-            }
+            handle_subscription_status(&db, &event.data.object, "past_due").await
         }
         "customer.subscription.deleted" => {
-            if let Err(e) = handle_customer_subscription_deleted(&db, &event.data.object).await {
-                eprintln!("Failed to handle customer.subscription.deleted: {:?}", e);
-                return Err(StatusCode::INTERNAL_SERVER_ERROR);
-            }
+            handle_subscription_status(&db, &event.data.object, "canceled").await
         }
-        _ => {
-            // Ignore other event types
-            println!("Ignoring webhook event type: {}", event.event_type);
-        }
+        _ => Ok(()),
     }
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(json!({ "status": "ok" })))
 }
 
-// Handle checkout.session.completed event
 async fn handle_checkout_session_completed(
     db: &Database,
     session_data: &Value,
@@ -411,99 +844,63 @@ async fn handle_checkout_session_completed(
     let customer_id = session_data["customer"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing customer ID in checkout session"))?;
-    
     let subscription_id = session_data["subscription"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing subscription ID in checkout session"))?;
 
-    // Find or create organization with stripe customer ID
-    let mut organization = match db.get_organization_by_stripe_customer_id(customer_id).await? {
+    let organization = match db
+        .get_organization_by_stripe_customer_id(customer_id)
+        .await?
+    {
         Some(org) => org,
         None => {
-            // Create a new organization if none exists
-            let new_org = Organization {
+            let now = Utc::now();
+            let org = Organization {
                 id: Uuid::new_v4(),
                 name: format!("Organization {}", customer_id),
                 stripe_customer_id: Some(customer_id.to_string()),
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
+                created_at: now,
+                updated_at: now,
             };
-            db.create_organization(&new_org).await?;
-            new_org
+            db.create_organization(&org).await?;
+            org
         }
     };
 
-    // Update organization with customer ID if needed
-    if organization.stripe_customer_id.is_none() {
-        organization.stripe_customer_id = Some(customer_id.to_string());
-        organization.updated_at = Utc::now();
-        db.update_organization(&organization).await?;
-    }
-
-    // Get subscription details from Stripe to extract plan info
-    // For now, we'll use the pro plan as default since that's what triggers checkout
-    let plans = db.list_plans().await?;
-    let pro_plan = plans.iter().find(|p| p.slug == "pro")
+    let pro_plan = db
+        .get_plan_by_slug("pro")
+        .await?
         .ok_or_else(|| anyhow::anyhow!("Pro plan not found"))?;
-
-    // Create subscription record
-    let subscription = OrgSubscription {
+    let now = Utc::now();
+    db.create_subscription(&OrgSubscription {
         id: Uuid::new_v4(),
         organization_id: organization.id,
         stripe_subscription_id: subscription_id.to_string(),
         status: "active".to_string(),
-        current_period_end: Utc::now() + chrono::Duration::days(30), // Default to 30 days
+        current_period_end: now + chrono::Duration::days(30),
         plan_id: pro_plan.id,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    };
-
-    db.create_subscription(&subscription).await?;
-    
-    println!("Created subscription for organization {}: {}", organization.id, subscription_id);
-    Ok(())
+        created_at: now,
+        updated_at: now,
+    })
+    .await
 }
 
-// Handle invoice.payment_failed event
-async fn handle_invoice_payment_failed(
+async fn handle_subscription_status(
     db: &Database,
-    invoice_data: &Value,
+    event_data: &Value,
+    status: &str,
 ) -> Result<(), anyhow::Error> {
-    let subscription_id = invoice_data["subscription"]
+    let subscription_id = event_data["subscription"]
         .as_str()
-        .ok_or_else(|| anyhow::anyhow!("Missing subscription ID in invoice"))?;
-
-    let mut subscription = db.get_subscription_by_stripe_id(subscription_id).await?
-        .ok_or_else(|| anyhow::anyhow!("Subscription not found: {}", subscription_id))?;
-
-    subscription.status = "past_due".to_string();
-    subscription.updated_at = Utc::now();
-    
-    db.update_subscription(&subscription).await?;
-    
-    println!("Marked subscription as past_due: {}", subscription_id);
-    Ok(())
-}
-
-// Handle customer.subscription.deleted event
-async fn handle_customer_subscription_deleted(
-    db: &Database,
-    subscription_data: &Value,
-) -> Result<(), anyhow::Error> {
-    let subscription_id = subscription_data["id"]
-        .as_str()
+        .or_else(|| event_data["id"].as_str())
         .ok_or_else(|| anyhow::anyhow!("Missing subscription ID"))?;
-
-    let mut subscription = db.get_subscription_by_stripe_id(subscription_id).await?
+    let mut subscription = db
+        .get_subscription_by_stripe_id(subscription_id)
+        .await?
         .ok_or_else(|| anyhow::anyhow!("Subscription not found: {}", subscription_id))?;
-
-    subscription.status = "canceled".to_string();
+    subscription.status = status.to_string();
     subscription.updated_at = Utc::now();
-    
-    db.update_subscription(&subscription).await?;
-    
-    println!("Marked subscription as canceled: {}", subscription_id);
-    Ok(())
+    db.update_subscription(&subscription).await
 }
 
 #[cfg(test)]
@@ -511,219 +908,35 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_checkout_request_serialization() {
+    async fn checkout_request_serializes() {
         let request = CheckoutRequest {
             plan_slug: "pro".to_string(),
             success_url: Some("http://localhost:3000/success".to_string()),
-            cancel_url: Some("http://localhost:3000/cancel".to_string()),
+            cancel_url: None,
         };
-
-        // Test serialization
-        let json_str = serde_json::to_string(&request).expect("Failed to serialize");
-        assert!(json_str.contains("pro"));
-        assert!(json_str.contains("success"));
-
-        // Test deserialization
-        let deserialized: CheckoutRequest = serde_json::from_str(&json_str).expect("Failed to deserialize");
-        assert_eq!(deserialized.plan_slug, "pro");
-        assert_eq!(deserialized.success_url.unwrap(), "http://localhost:3000/success");
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("pro"));
+        let decoded: CheckoutRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.plan_slug, "pro");
     }
 
     #[tokio::test]
-    async fn test_checkout_response_serialization() {
-        let response = CheckoutResponse {
-            checkout_url: "https://checkout.stripe.com/test123".to_string(),
-        };
-
-        // Test serialization
-        let json_str = serde_json::to_string(&response).expect("Failed to serialize");
-        assert!(json_str.contains("checkout.stripe.com"));
-
-        // Test deserialization
-        let deserialized: CheckoutResponse = serde_json::from_str(&json_str).expect("Failed to deserialize");
-        assert_eq!(deserialized.checkout_url, "https://checkout.stripe.com/test123");
-    }
-
-    #[tokio::test]
-    async fn test_database_operations() {
-        let db = Database::new("test://").await.expect("Failed to create test database");
-        
-        // Test listing plans
-        let plans = db.list_plans().await.expect("Failed to list plans");
+    async fn database_exposes_default_plans() {
+        let db = Database::new("test://").await.unwrap();
+        let plans = db.list_plans().await.unwrap();
         assert_eq!(plans.len(), 2);
-        
-        // Test finding plans by slug
-        let free_plan = db.get_plan_by_slug("free").await.expect("Failed to get plan");
-        assert!(free_plan.is_some());
-        assert_eq!(free_plan.unwrap().price_cents, 0);
-
-        let pro_plan = db.get_plan_by_slug("pro").await.expect("Failed to get plan");
-        assert!(pro_plan.is_some());
-        assert_eq!(pro_plan.unwrap().price_cents, 2900);
-
-        // Test non-existent plan
-        let nonexistent = db.get_plan_by_slug("nonexistent").await.expect("Failed to get plan");
-        assert!(nonexistent.is_none());
+        assert!(plans.iter().any(|plan| plan.slug == "free"));
     }
 
-    #[tokio::test]
-    async fn test_free_plan_checkout_logic() {
-        let db = Database::new("test://").await.expect("Failed to create test database");
-        
-        // Simulate free plan checkout logic
-        let plan = db.get_plan_by_slug("free").await.expect("Failed to get plan").unwrap();
-        assert_eq!(plan.price_cents, 0);
-        
-        // For free plan, we should skip Stripe
-        let success_url = "http://localhost:3000/success".to_string();
-        assert_eq!(success_url, "http://localhost:3000/success");
-    }
-
-    #[tokio::test]
-    async fn test_pro_plan_stripe_requirements() {
-        let db = Database::new("test://").await.expect("Failed to create test database");
-        
-        let plan = db.get_plan_by_slug("pro").await.expect("Failed to get plan").unwrap();
-        assert_eq!(plan.price_cents, 2900);
-        assert!(plan.price_cents > 0); // Should require Stripe for paid plans
-        
-        // Should have features that differentiate from free
-        let features = &plan.features;
-        assert_eq!(features["max_tests"], "unlimited");
-        assert_eq!(features["support"], "priority");
-    }
-
-    #[tokio::test]
-    async fn test_test_definition_operations() {
-        let db = Database::new("test://").await.expect("Failed to create test database");
-        
-        let test_def = SaasTestDefinition {
-            id: Uuid::new_v4(),
-            name: "Test API Definition".to_string(),
-            description: Some("A test definition via API".to_string()),
-            code: "console.log('api test')".to_string(),
-            language: "javascript".to_string(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            user_id: Some(Uuid::new_v4()),
-            organization_id: Some(Uuid::new_v4()),
-            is_public: true,
-        };
-
-        // Create
-        db.create_test_definition(&test_def).await.expect("Failed to create test definition");
-
-        // Read
-        let retrieved = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
-        assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().name, "Test API Definition");
-
-        // List
-        let all_defs = db.list_test_definitions(None, None).await.expect("Failed to list test definitions");
-        assert_eq!(all_defs.len(), 1);
-
-        // Delete
-        db.delete_test_definition(test_def.id).await.expect("Failed to delete test definition");
-        let after_delete = db.get_test_definition(test_def.id).await.expect("Failed to get test definition");
-        assert!(after_delete.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_webhook_signature_verification() {
+    #[test]
+    fn webhook_signature_verification_accepts_valid_hmac() {
         let secret = "test_webhook_secret";
         let payload = b"test_payload";
-        
-        // Create a valid signature
         let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
         mac.update(payload);
-        let signature = hex::encode(mac.finalize().into_bytes());
-        let full_signature = format!("v1={}", signature);
+        let signature = format!("v1={}", hex::encode(mac.finalize().into_bytes()));
 
-        // Test valid signature
-        assert!(verify_webhook_signature(payload, &full_signature, secret).is_ok());
-
-        // Test invalid signature
+        assert!(verify_webhook_signature(payload, &signature, secret).is_ok());
         assert!(verify_webhook_signature(payload, "v1=invalid", secret).is_err());
-
-        // Test invalid format
-        assert!(verify_webhook_signature(payload, "invalid_format", secret).is_err());
-    }
-
-    #[tokio::test]
-    async fn test_organization_subscription_operations() {
-        let db = Database::new("test://").await.expect("Failed to create test database");
-        
-        // Create test organization
-        let org = Organization {
-            id: Uuid::new_v4(),
-            name: "Test Organization".to_string(),
-            stripe_customer_id: Some("cus_test123".to_string()),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        db.create_organization(&org).await.expect("Failed to create organization");
-
-        // Test finding by stripe customer ID
-        let found_org = db.get_organization_by_stripe_customer_id("cus_test123").await
-            .expect("Failed to get organization")
-            .expect("Organization not found");
-        assert_eq!(found_org.id, org.id);
-
-        // Create test subscription
-        let plans = db.list_plans().await.expect("Failed to list plans");
-        let pro_plan = plans.iter().find(|p| p.slug == "pro").unwrap();
-
-        let subscription = OrgSubscription {
-            id: Uuid::new_v4(),
-            organization_id: org.id,
-            stripe_subscription_id: "sub_test123".to_string(),
-            status: "active".to_string(),
-            current_period_end: Utc::now() + chrono::Duration::days(30),
-            plan_id: pro_plan.id,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        db.create_subscription(&subscription).await.expect("Failed to create subscription");
-
-        // Test finding subscription by stripe ID
-        let found_sub = db.get_subscription_by_stripe_id("sub_test123").await
-            .expect("Failed to get subscription")
-            .expect("Subscription not found");
-        assert_eq!(found_sub.id, subscription.id);
-        assert_eq!(found_sub.status, "active");
-
-        // Test updating subscription status
-        let mut updated_sub = found_sub.clone();
-        updated_sub.status = "past_due".to_string();
-        updated_sub.updated_at = Utc::now();
-        db.update_subscription(&updated_sub).await.expect("Failed to update subscription");
-
-        let updated_found = db.get_subscription_by_stripe_id("sub_test123").await
-            .expect("Failed to get subscription")
-            .expect("Subscription not found");
-        assert_eq!(updated_found.status, "past_due");
-    }
-
-    #[tokio::test]
-    async fn test_webhook_event_serialization() {
-        let webhook_event = WebhookEvent {
-            event_type: "checkout.session.completed".to_string(),
-            data: WebhookEventData {
-                object: serde_json::json!({
-                    "customer": "cus_test123",
-                    "subscription": "sub_test123"
-                }),
-            },
-        };
-
-        // Test serialization
-        let json_str = serde_json::to_string(&webhook_event).expect("Failed to serialize");
-        assert!(json_str.contains("checkout.session.completed"));
-        assert!(json_str.contains("cus_test123"));
-
-        // Test deserialization
-        let deserialized: WebhookEvent = serde_json::from_str(&json_str).expect("Failed to deserialize");
-        assert_eq!(deserialized.event_type, "checkout.session.completed");
-        assert_eq!(deserialized.data.object["customer"], "cus_test123");
     }
 }

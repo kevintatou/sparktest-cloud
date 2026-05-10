@@ -60,20 +60,29 @@ export function BillingSection() {
   const formatFeatures = (features: Record<string, any>) => {
     const featureList: string[] = [];
     
-    if (features.max_tests) {
-      featureList.push(`${features.max_tests} tests`);
+    if (features.max_projects) {
+      featureList.push(`${features.max_projects} project${features.max_projects === 1 ? '' : 's'}`);
     }
-    if (features.max_runs_per_month) {
-      featureList.push(`${features.max_runs_per_month} runs/month`);
+    if (features.cloud_agent_tokens) {
+      featureList.push(`${features.cloud_agent_tokens} cloud agent token${features.cloud_agent_tokens === 1 ? '' : 's'}`);
+    }
+    if (features.seats) {
+      featureList.push(`${features.seats} seat${features.seats === 1 ? '' : 's'}`);
+    }
+    if (features.log_retention_days) {
+      featureList.push(`${features.log_retention_days} days log retention`);
+    }
+    if (features.result_storage_gb) {
+      featureList.push(`${features.result_storage_gb}GB result storage`);
     }
     if (features.support) {
       featureList.push(`${features.support} support`);
     }
-    if (features.advanced_analytics) {
-      featureList.push('Advanced analytics');
+    if (features.private_cloud_agents) {
+      featureList.push('Private cloud agents');
     }
-    if (features.team_collaboration) {
-      featureList.push('Team collaboration');
+    if (features.audit_log) {
+      featureList.push('Audit log');
     }
     
     return featureList;
@@ -158,16 +167,16 @@ export function BillingSection() {
       {/* Usage Summary Card */}
       <Card className="lg:col-span-2">
         <CardHeader>
-          <CardTitle>Usage This Month</CardTitle>
+          <CardTitle>Cloud Usage</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="flex items-center justify-between">
-              <span>Test Runs</span>
-              <span className="font-medium">1,245</span>
+              <span>Agent Tokens</span>
+              <span className="font-medium">1</span>
             </div>
             <div className="flex items-center justify-between">
-              <span>Team Members</span>
+              <span>Seats</span>
               <span className="font-medium">1</span>
             </div>
             <div className="flex items-center justify-between">
