@@ -227,7 +227,7 @@ export default function Home() {
       );
     }
 
-    return <SaasSections activeTab={activeTab} />;
+    return <SaasSections activeTab={activeTab} setActiveTab={setActiveTab} />;
   };
 
   return (
