@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Plus, CreditCard, Folder, Radio, Settings } from 'lucide-react';
 import { NavigationKey } from './navigation';
 import { BillingSection } from './billing-section';
+import { supabase } from '@/lib/supabase';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -36,10 +37,20 @@ export interface SaasSectionsProps {
   activeTab: NavigationKey;
 }
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    return { Authorization: `Bearer ${session.access_token}` };
+  }
+  return {};
+}
+
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const authHeaders = await getAuthHeaders();
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
       ...options?.headers,
     },
     ...options,

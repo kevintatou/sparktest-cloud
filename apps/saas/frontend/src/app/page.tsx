@@ -15,6 +15,8 @@ import { Navigation, NavigationKey } from '@/components/dashboard/navigation';
 import { Dashboard } from '@/components/dashboard/dashboard';
 import { TestSections } from '@/components/dashboard/test-sections';
 import { SaasSections } from '@/components/dashboard/saas-sections';
+import { AuthGate } from '@/components/auth/auth-gate';
+import { UserMenu } from '@/components/auth/user-menu';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<NavigationKey>('dashboard');
@@ -229,6 +231,7 @@ export default function Home() {
   };
 
   return (
+    <AuthGate>
     <div className="min-h-screen bg-background">
       {/* Enhanced Header */}
       <header className="bg-background border-b">
@@ -253,15 +256,11 @@ export default function Home() {
                 <h1 className="text-2xl font-bold tracking-tight">
                   SparkTest
                 </h1>
-                <p className="text-xs text-muted-foreground">Test Execution Platform</p>
+                <p className="text-xs text-muted-foreground">Cloud Test Platform</p>
               </div>
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center space-x-2 bg-muted/50 px-3 py-1.5 rounded-md border">
-                <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                <Database className="h-4 w-4" />
-                <span>http://localhost:3001</span>
-              </div>
+              <UserMenu />
               <ThemeToggle />
             </div>
           </div>
@@ -327,5 +326,6 @@ export default function Home() {
         availableDefinitions={testDefinitions}
       />
     </div>
+    </AuthGate>
   );
 }
