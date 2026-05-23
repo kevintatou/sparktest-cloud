@@ -202,7 +202,7 @@ export function RunDetail({ run, definition, onBack, onRetry }: RunDetailProps) 
               <div className="sm:col-span-2">
                 <p className="text-xs text-muted-foreground mb-1">Commands</p>
                 <div className="bg-muted rounded-lg p-3 font-mono text-sm space-y-1">
-                  {definition.commands.map((cmd, i) => (
+                  {definition.commands.map((cmd: string, i: number) => (
                     <div key={i} className="flex items-start gap-2">
                       <span className="text-muted-foreground select-none">$</span>
                       <span>{cmd}</span>
@@ -226,7 +226,7 @@ export function RunDetail({ run, definition, onBack, onRetry }: RunDetailProps) 
           </CardHeader>
           <CardContent>
             <div className="bg-muted rounded-lg p-3 font-mono text-sm space-y-1">
-              {run.command.map((cmd, i) => (
+              {run.command.map((cmd: string, i: number) => (
                 <div key={i} className="flex items-start gap-2">
                   <span className="text-muted-foreground select-none">$</span>
                   <span>{cmd}</span>
@@ -248,7 +248,7 @@ export function RunDetail({ run, definition, onBack, onRetry }: RunDetailProps) 
         <CardContent>
           {run.logs && run.logs.length > 0 ? (
             <div className="bg-zinc-950 text-zinc-100 rounded-lg p-4 font-mono text-sm max-h-[500px] overflow-y-auto">
-              {run.logs.map((line, i) => (
+              {run.logs.map((line: string, i: number) => (
                 <div key={i} className="flex">
                   <span className="text-zinc-600 select-none w-10 shrink-0 text-right pr-3">
                     {i + 1}
