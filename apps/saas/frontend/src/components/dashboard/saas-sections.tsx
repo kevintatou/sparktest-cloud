@@ -235,6 +235,11 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab }) => {
         </div>
       );
 
+    case 'security':
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { SecuritySection } = require('./security-section');
+      return <SecuritySection />;
+
     default:
       return null;
   }
