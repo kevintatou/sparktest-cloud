@@ -79,6 +79,10 @@ struct RunStatusRequest {
     result: Option<Value>,
     error: Option<String>,
 }
+#[derive(Debug, Deserialize)]
+struct TriggerRunRequest {
+    definition_id: Uuid,
+}
 
 #[derive(Debug, Serialize)]
 struct QueueResponse {
@@ -144,7 +148,7 @@ pub fn create_app(database: Database) -> Router {
         .route("/api/agents", get(list_agents))
         .route("/api/agent/check-in", post(agent_check_in))
         .route("/api/agent/next-run", post(agent_next_run))
-        .route("/api/agent/runs/:id/status", post(agent_update_run_status))
+        .route("/api/agent/runs/:id/status", post(agent_update_run_status))        .route("/api/agent/trigger-run", post(agent_trigger_run))
         .route("/api/billing/plans", get(list_plans))
         .route("/api/billing/checkout", post(create_checkout_session))
         .route("/api/billing/webhook", post(handle_webhook))
