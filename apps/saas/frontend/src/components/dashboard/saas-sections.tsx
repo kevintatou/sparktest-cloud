@@ -43,14 +43,6 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return {};
 }
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    return { Authorization: `Bearer ${session.access_token}` };
-  }
-  return {};
-}
-
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const authHeaders = await getAuthHeaders();
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
