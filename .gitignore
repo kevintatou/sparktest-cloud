@@ -96,3 +96,5 @@ supabase/.temp/
 # Cargo
 **/Cargo.lock
 target/
+.vercel
+.agent-runs/

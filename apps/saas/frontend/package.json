@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "next build",
+    "build": "pnpm build:deps && next build",
+    "build:deps": "pnpm --filter '@tatou/core' build && pnpm --filter '@tatou/ui' build",
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",

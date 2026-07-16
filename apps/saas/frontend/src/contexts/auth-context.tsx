@@ -27,6 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    if (
+      hashParams.get('type') === 'recovery' &&
+      window.location.pathname !== '/reset-password'
+    ) {
+      window.location.replace(`/reset-password${window.location.hash}`);
+      return;
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setState({ user: session?.user ?? null, session, loading: false });
