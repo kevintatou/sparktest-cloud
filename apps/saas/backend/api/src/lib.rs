@@ -12,9 +12,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::Sha256;
 use sparktest_saas_core::{
-    schedule_next_run_at, Agent, AgentToken, AgentTokenCreated, Database, Executor,
-    OrgSubscription, Organization, Plan, Profile, Project, ProjectMember, SaasTestDefinition,
-    SaasTestRun, Schedule, TestSuite,
+    deliver_run_event, schedule_next_run_at, Agent, AgentToken, AgentTokenCreated, Database,
+    Executor, OrgSubscription, Organization, Plan, Profile, Project, ProjectMember,
+    SaasTestDefinition, SaasTestRun, Schedule, TestSuite, Webhook, WebhookDelivery,
 };
 use std::sync::Arc;
 use stripe::{
@@ -159,6 +159,18 @@ pub fn create_app(database: Database) -> Router {
         .route(
             "/api/ci/schedules/:id",
             patch(update_schedule).delete(delete_schedule),
+        )
+        .route(
+            "/api/ci/webhooks",
+            get(list_webhooks).post(create_webhook),
+        )
+        .route(
+            "/api/ci/webhooks/:id",
+            patch(update_webhook).delete(delete_webhook),
+        )
+        .route(
+            "/api/ci/webhooks/:id/deliveries",
+            get(list_webhook_deliveries),
         )
         .route("/api/billing/plans", get(list_plans))
         .route("/api/billing/checkout", post(create_checkout_session))
@@ -407,8 +419,11 @@ async fn create_test_run(
     run.updated_at = Utc::now();
     db.create_test_run(&run)
         .await
-        .map(|_| Json(run))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    deliver_run_event(&db, run.project_id, "queued", &run).await;
+
+    Ok(Json(run))
 }
 
 async fn get_test_run(
@@ -741,8 +756,13 @@ async fn agent_update_run_status(
     run.updated_at = Utc::now();
     db.update_test_run(&run)
         .await
-        .map(|_| Json(run))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Fire-and-record: webhook delivery must not block or fail the agent's
+    // status-report request, which already succeeded by this point.
+    deliver_run_event(&db, run.project_id, &run.status, &run).await;
+
+    Ok(Json(run))
 }
 
 async fn agent_trigger_run(
@@ -770,8 +790,11 @@ async fn agent_trigger_run(
     };
     db.create_test_run(&run)
         .await
-        .map(|_| Json(run))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    deliver_run_event(&db, run.project_id, "queued", &run).await;
+
+    Ok(Json(run))
 }
 
 #[derive(Debug, Deserialize)]
@@ -879,6 +902,121 @@ async fn delete_schedule(
     db.delete_schedule(id)
         .await
         .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateWebhookRequest {
+    name: String,
+    url: String,
+    events: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateWebhookRequest {
+    enabled: bool,
+}
+
+async fn list_webhooks(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<Webhook>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_webhooks(ctx.project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn create_webhook(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateWebhookRequest>,
+) -> Result<Json<Webhook>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    let now = Utc::now();
+    let webhook = Webhook {
+        id: Uuid::new_v4(),
+        project_id: ctx.project_id,
+        name: request.name,
+        url: request.url,
+        secret_hash: None,
+        events: request.events,
+        enabled: true,
+        created_at: now,
+        updated_at: now,
+    };
+
+    db.create_webhook(&webhook)
+        .await
+        .map(|_| Json(webhook))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn update_webhook(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(request): Json<UpdateWebhookRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_webhook(id).await {
+        Ok(Some(webhook)) if webhook.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.set_webhook_enabled(id, request.enabled)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn delete_webhook(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_webhook(id).await {
+        Ok(Some(webhook)) if webhook.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.delete_webhook(id)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn list_webhook_deliveries(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<WebhookDelivery>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_webhook(id).await {
+        Ok(Some(webhook)) if webhook.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.list_webhook_deliveries(id)
+        .await
+        .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
