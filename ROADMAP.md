@@ -131,10 +131,10 @@ Initial value:
 - agent connectivity
 - no need to self-host the SparkTest app
 
-Suggested initial plans:
+Initial plans (2026-07-09: focusing on Free + Pro only until there's real usage; Team/Business revisited later):
 
 - Free: 1 project, 1 agent, limited runs/history
-- Starter: low-cost paid plan for solo devs
-- Team: more projects/agents/history
+- Pro: $29/month — full control-plane loop, no compute cost to us
+- Team/Business: deferred, not being built yet
 
 Exact limits can wait until the run/agent loop works.

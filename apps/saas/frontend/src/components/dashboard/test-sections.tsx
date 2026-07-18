@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { TestDefinitionCard, ExecutorCard, TestSuiteCard } from '@tatou/ui';
@@ -7,6 +8,7 @@ import { TestRunCard } from '@/components/ui/run-card';
 import { Definition, Run, Executor, Suite } from '@tatou/core';
 import { Plus, FileText, Play, Server, Layers } from 'lucide-react';
 import { NavigationKey } from './navigation';
+import { RunDetail } from './run-detail';
 
 export interface TestSectionsProps {
   activeTab: NavigationKey;
@@ -45,6 +47,27 @@ export const TestSections: React.FC<TestSectionsProps> = ({
   deleteExecutor,
   deleteSuite,
 }) => {
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+
+  // If a run is selected, show the detail view
+  if (activeTab === 'runs' && selectedRunId) {
+    const run = testRuns.find(r => r.id === selectedRunId);
+    if (run) {
+      const definition = testDefinitions.find(d => d.id === run.definitionId);
+      return (
+        <RunDetail
+          run={run}
+          definition={definition}
+          onBack={() => setSelectedRunId(null)}
+          onRetry={(defId) => {
+            handleRunTest(defId);
+            setSelectedRunId(null);
+          }}
+        />
+      );
+    }
+  }
+
   switch (activeTab) {
     case 'definitions':
       return (
@@ -103,10 +126,9 @@ export const TestSections: React.FC<TestSectionsProps> = ({
               <TestRunCard 
                 key={run.id} 
                 run={run}
-                onClick={handleRunClick}
+                onClick={(id) => setSelectedRunId(id)}
                 onDelete={deleteRun}
                 onRetry={(runId) => {
-                  // Find the original definition for this run and run it again
                   const definition = testDefinitions.find(d => d.id === run.definitionId);
                   if (definition) {
                     handleRunTest(definition.id);

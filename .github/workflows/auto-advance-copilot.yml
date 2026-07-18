@@ -26,6 +26,11 @@ on:
 jobs:
   auto-advance:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: read
     if: >
       (github.event_name == 'workflow_run' && 
        github.event.workflow_run.conclusion == 'success' &&
