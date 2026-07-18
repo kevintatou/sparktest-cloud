@@ -83,6 +83,33 @@ pub struct Schedule {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Webhook {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub url: String,
+    pub secret_hash: Option<String>,
+    pub events: Vec<String>,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct WebhookDelivery {
+    pub id: Uuid,
+    pub webhook_id: Uuid,
+    pub event: String,
+    pub payload: Value,
+    pub response_status: Option<i32>,
+    pub response_body: Option<String>,
+    pub duration_ms: Option<i32>,
+    pub success: bool,
+    pub attempt: i32,
+    pub delivered_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Executor {
     pub id: Uuid,
     pub project_id: Uuid,
@@ -270,6 +297,8 @@ struct Store {
     organizations: Vec<Organization>,
     subscriptions: Vec<OrgSubscription>,
     schedules: Vec<Schedule>,
+    webhooks: Vec<Webhook>,
+    webhook_deliveries: Vec<WebhookDelivery>,
 }
 
 #[derive(Clone)]
@@ -902,6 +931,195 @@ impl Database {
         let mut store = self.store.lock().unwrap();
         store.schedules.retain(|s| s.id != id);
         Ok(())
+    }
+
+    pub async fn create_webhook(&self, webhook: &Webhook) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                insert into webhooks (id, project_id, name, url, secret_hash, events, enabled, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                "#,
+            )
+            .bind(webhook.id)
+            .bind(webhook.project_id)
+            .bind(&webhook.name)
+            .bind(&webhook.url)
+            .bind(&webhook.secret_hash)
+            .bind(&webhook.events)
+            .bind(webhook.enabled)
+            .bind(webhook.created_at)
+            .bind(webhook.updated_at)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.webhooks.push(webhook.clone());
+        Ok(())
+    }
+
+    pub async fn list_webhooks(&self, project_id: Uuid) -> Result<Vec<Webhook>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Webhook>(
+                r#"
+                select id, project_id, name, url, secret_hash, events, enabled, created_at, updated_at
+                from webhooks where project_id = $1 order by created_at desc
+                "#,
+            )
+            .bind(project_id)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .webhooks
+            .iter()
+            .filter(|w| w.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    // Webhooks enabled for a given event, regardless of project — called from
+    // the run-status transition path, which only has the run's project_id
+    // available, so this filters by project_id + event membership together.
+    pub async fn list_webhooks_for_event(
+        &self,
+        project_id: Uuid,
+        event: &str,
+    ) -> Result<Vec<Webhook>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Webhook>(
+                r#"
+                select id, project_id, name, url, secret_hash, events, enabled, created_at, updated_at
+                from webhooks where project_id = $1 and enabled = true and $2 = any(events)
+                "#,
+            )
+            .bind(project_id)
+            .bind(event)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .webhooks
+            .iter()
+            .filter(|w| {
+                w.project_id == project_id
+                    && w.enabled
+                    && w.events.iter().any(|e| e == event)
+            })
+            .cloned()
+            .collect())
+    }
+
+    pub async fn get_webhook(&self, id: Uuid) -> Result<Option<Webhook>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Webhook>(
+                r#"
+                select id, project_id, name, url, secret_hash, events, enabled, created_at, updated_at
+                from webhooks where id = $1
+                "#,
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store.webhooks.iter().find(|w| w.id == id).cloned())
+    }
+
+    pub async fn set_webhook_enabled(&self, id: Uuid, enabled: bool) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("update webhooks set enabled = $2, updated_at = now() where id = $1")
+                .bind(id)
+                .bind(enabled)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(webhook) = store.webhooks.iter_mut().find(|w| w.id == id) {
+            webhook.enabled = enabled;
+            webhook.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    pub async fn delete_webhook(&self, id: Uuid) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("delete from webhooks where id = $1")
+                .bind(id)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.webhooks.retain(|w| w.id != id);
+        Ok(())
+    }
+
+    pub async fn record_webhook_delivery(
+        &self,
+        delivery: &WebhookDelivery,
+    ) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                insert into webhook_deliveries
+                  (id, webhook_id, event, payload, response_status, response_body, duration_ms, success, attempt, delivered_at)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                "#,
+            )
+            .bind(delivery.id)
+            .bind(delivery.webhook_id)
+            .bind(&delivery.event)
+            .bind(&delivery.payload)
+            .bind(delivery.response_status)
+            .bind(&delivery.response_body)
+            .bind(delivery.duration_ms)
+            .bind(delivery.success)
+            .bind(delivery.attempt)
+            .bind(delivery.delivered_at)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.webhook_deliveries.push(delivery.clone());
+        Ok(())
+    }
+
+    pub async fn list_webhook_deliveries(
+        &self,
+        webhook_id: Uuid,
+    ) -> Result<Vec<WebhookDelivery>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, WebhookDelivery>(
+                r#"
+                select id, webhook_id, event, payload, response_status, response_body, duration_ms, success, attempt, delivered_at
+                from webhook_deliveries where webhook_id = $1 order by delivered_at desc
+                "#,
+            )
+            .bind(webhook_id)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .webhook_deliveries
+            .iter()
+            .filter(|d| d.webhook_id == webhook_id)
+            .cloned()
+            .collect())
     }
 
     pub async fn update_test_run(&self, run: &TestRun) -> Result<(), anyhow::Error> {
@@ -1788,6 +2006,8 @@ pub async fn run_due_schedules_once(db: &Database) -> Result<usize, anyhow::Erro
             continue;
         }
 
+        deliver_run_event(db, run.project_id, "queued", &run).await;
+
         let next_run_at = schedule_next_run_at(&schedule.cron_expression, &schedule.timezone, now)
             .unwrap_or(None);
         if let Err(error) = db.mark_schedule_fired(schedule.id, now, next_run_at).await {
@@ -1814,6 +2034,98 @@ pub fn spawn_scheduler(db: Database, interval: std::time::Duration) -> tokio::ta
             }
         }
     })
+}
+
+// Outbound webhooks (issue #76): deliver a run-status-transition event to
+// every enabled webhook subscribed to it. Fire-and-record — a failed
+// delivery (network error, non-2xx, timeout) is logged to
+// webhook_deliveries as success=false and does not fail the caller's
+// request; the run-status update already succeeded by the time this runs.
+// Payload is HMAC-SHA256 signed the same way Stripe's inbound webhook is
+// verified (X-Webhook-Signature: v1=<hex>), so receivers can authenticate it.
+const WEBHOOK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+pub async fn deliver_run_event(db: &Database, project_id: Uuid, event: &str, run: &TestRun) {
+    let webhooks = match db.list_webhooks_for_event(project_id, event).await {
+        Ok(webhooks) => webhooks,
+        Err(error) => {
+            tracing::error!(%error, event, "failed to look up webhooks for event");
+            return;
+        }
+    };
+
+    if webhooks.is_empty() {
+        return;
+    }
+
+    let payload = serde_json::json!({
+        "event": event,
+        "run": run,
+        "delivered_at": Utc::now(),
+    });
+
+    for webhook in webhooks {
+        deliver_one(db, &webhook, event, &payload).await;
+    }
+}
+
+async fn deliver_one(db: &Database, webhook: &Webhook, event: &str, payload: &Value) {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+
+    let body = payload.to_string();
+    let started = std::time::Instant::now();
+
+    let client = match reqwest::Client::builder().timeout(WEBHOOK_TIMEOUT).build() {
+        Ok(client) => client,
+        Err(error) => {
+            tracing::error!(%error, "failed to build webhook http client");
+            return;
+        }
+    };
+
+    let mut request = client
+        .post(&webhook.url)
+        .header("Content-Type", "application/json");
+
+    if let Some(secret_hash) = &webhook.secret_hash {
+        if let Ok(mut mac) = HmacSha256::new_from_slice(secret_hash.as_bytes()) {
+            mac.update(body.as_bytes());
+            let signature = format!("v1={}", hex::encode(mac.finalize().into_bytes()));
+            request = request.header("X-Webhook-Signature", signature);
+        }
+    }
+
+    let result = request.body(body).send().await;
+    let duration_ms = started.elapsed().as_millis() as i32;
+
+    let (response_status, response_body, success) = match result {
+        Ok(response) => {
+            let status = response.status().as_u16() as i32;
+            let ok = response.status().is_success();
+            let body_text = response.text().await.ok();
+            (Some(status), body_text, ok)
+        }
+        Err(error) => (None, Some(error.to_string()), false),
+    };
+
+    let delivery = WebhookDelivery {
+        id: Uuid::new_v4(),
+        webhook_id: webhook.id,
+        event: event.to_string(),
+        payload: payload.clone(),
+        response_status,
+        response_body: response_body.map(|b| b.chars().take(2000).collect()),
+        duration_ms: Some(duration_ms),
+        success,
+        attempt: 1,
+        delivered_at: Utc::now(),
+    };
+
+    if let Err(error) = db.record_webhook_delivery(&delivery).await {
+        tracing::error!(%error, webhook_id = %webhook.id, "failed to record webhook delivery");
+    }
 }
 
 #[cfg(test)]
@@ -2049,5 +2361,161 @@ mod tests {
 
         let fired = run_due_schedules_once(&db).await.unwrap();
         assert_eq!(fired, 0);
+    }
+
+    // Minimal raw-TCP HTTP server for webhook delivery tests — avoids adding
+    // a test-server dependency just for this. Reads one request, ignores its
+    // contents beyond confirming a body was sent, replies with the given
+    // status line, and returns the request bytes it saw.
+    async fn serve_one_request(status_line: &'static str) -> (String, tokio::task::JoinHandle<Vec<u8>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let n = socket.read(&mut buf).await.unwrap_or(0);
+            buf.truncate(n);
+            let response = format!("{status_line}\r\nContent-Length: 0\r\n\r\n");
+            let _ = socket.write_all(response.as_bytes()).await;
+            buf
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    #[tokio::test]
+    async fn webhook_receives_a_signed_post_on_queued_run() {
+        let db = Database::new("test://").await.unwrap();
+        let now = Utc::now();
+        let webhook = Webhook {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            name: "test hook".to_string(),
+            url: String::new(), // filled in below once the server is bound
+            secret_hash: Some("test-secret".to_string()),
+            events: vec!["queued".to_string()],
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        };
+
+        let (url, handle) = serve_one_request("HTTP/1.1 200 OK").await;
+        let webhook = Webhook { url, ..webhook };
+        db.create_webhook(&webhook).await.unwrap();
+
+        let run = TestRun {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            definition_id: None,
+            suite_id: None,
+            executor_id: None,
+            agent_id: None,
+            status: "queued".to_string(),
+            result: None,
+            error: None,
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+
+        deliver_run_event(&db, db.default_project_id(), "queued", &run).await;
+
+        let received = handle.await.unwrap();
+        let request_text = String::from_utf8_lossy(&received);
+        assert!(request_text.contains("POST"), "delivered as a POST");
+        assert!(
+            request_text.to_lowercase().contains("x-webhook-signature: v1="),
+            "signature header present: {request_text}"
+        );
+
+        let deliveries = db.list_webhook_deliveries(webhook.id).await.unwrap();
+        assert_eq!(deliveries.len(), 1);
+        assert!(deliveries[0].success);
+        assert_eq!(deliveries[0].response_status, Some(200));
+    }
+
+    #[tokio::test]
+    async fn webhook_delivery_records_failure_on_non_2xx() {
+        let db = Database::new("test://").await.unwrap();
+        let now = Utc::now();
+        let (url, _handle) = serve_one_request("HTTP/1.1 500 Internal Server Error").await;
+        let webhook = Webhook {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            name: "flaky hook".to_string(),
+            url,
+            secret_hash: None,
+            events: vec!["failed".to_string()],
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        };
+        db.create_webhook(&webhook).await.unwrap();
+
+        let run = TestRun {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            definition_id: None,
+            suite_id: None,
+            executor_id: None,
+            agent_id: None,
+            status: "failed".to_string(),
+            result: None,
+            error: Some("boom".to_string()),
+            queued_at: now,
+            started_at: None,
+            finished_at: Some(now),
+            created_at: now,
+            updated_at: now,
+        };
+
+        deliver_run_event(&db, db.default_project_id(), "failed", &run).await;
+
+        let deliveries = db.list_webhook_deliveries(webhook.id).await.unwrap();
+        assert_eq!(deliveries.len(), 1);
+        assert!(!deliveries[0].success);
+        assert_eq!(deliveries[0].response_status, Some(500));
+    }
+
+    #[tokio::test]
+    async fn webhook_not_subscribed_to_event_is_not_called() {
+        let db = Database::new("test://").await.unwrap();
+        let now = Utc::now();
+        let webhook = Webhook {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            name: "passed-only hook".to_string(),
+            url: "http://127.0.0.1:1".to_string(), // would fail to connect if ever called
+            secret_hash: None,
+            events: vec!["passed".to_string()],
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        };
+        db.create_webhook(&webhook).await.unwrap();
+
+        let run = TestRun {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            definition_id: None,
+            suite_id: None,
+            executor_id: None,
+            agent_id: None,
+            status: "queued".to_string(),
+            result: None,
+            error: None,
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+
+        deliver_run_event(&db, db.default_project_id(), "queued", &run).await;
+
+        let deliveries = db.list_webhook_deliveries(webhook.id).await.unwrap();
+        assert_eq!(deliveries.len(), 0, "not subscribed to 'queued', must not be called");
     }
 }

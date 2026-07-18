@@ -16,6 +16,10 @@ sqlx = { version = "0.7.4", features = ["runtime-tokio-rustls", "postgres", "uui
 croner = "2.0"
 chrono-tz = "0.10"
 tracing = "0.1"
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
 
 [dev-dependencies]
 tokio-test = "0.4"
