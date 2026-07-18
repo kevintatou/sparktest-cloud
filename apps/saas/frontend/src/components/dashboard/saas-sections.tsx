@@ -95,6 +95,11 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab, setActive
   };
 
   switch (activeTab) {
+    case 'ci':
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { CiSection } = require('./ci-section');
+      return <CiSection />;
+
     case 'projects':
       return (
         <div className="space-y-6">

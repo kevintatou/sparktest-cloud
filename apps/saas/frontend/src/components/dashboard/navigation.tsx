@@ -31,6 +31,7 @@ const navigationGroups = [
       { key: 'runs', label: 'Runs', icon: Play },
       { key: 'executors', label: 'Executors', icon: Server },
       { key: 'suites', label: 'Suites', icon: Layers },
+      { key: 'ci', label: 'CI / Schedules', icon: GitBranch },
     ]
   },
   {
