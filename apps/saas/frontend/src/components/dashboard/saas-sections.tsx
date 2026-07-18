@@ -224,6 +224,11 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab, setActive
         </div>
       );
 
+    case 'routing':
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { RoutingSection } = require('./routing-section');
+      return <RoutingSection />;
+
     case 'billing':
       return (
         <div className="space-y-6">

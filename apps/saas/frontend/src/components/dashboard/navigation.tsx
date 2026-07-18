@@ -39,6 +39,7 @@ const navigationGroups = [
     items: [
       { key: 'projects', label: 'Projects', icon: Folder },
       { key: 'agents', label: 'Agents', icon: Radio },
+      { key: 'routing', label: 'Routing', icon: Network },
       { key: 'billing', label: 'Billing & Plans', icon: CreditCard },
     ]
   },
