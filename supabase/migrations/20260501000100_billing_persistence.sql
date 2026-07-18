@@ -93,25 +93,19 @@ alter table usage_snapshots enable row level security;
 
 -- ============================================================
 -- Seed default plans
+-- Free + Pro only (2026-07: Team/Business deferred, see b726e24).
+-- Values match the in-memory seed in apps/saas/backend/core/src/lib.rs
+-- default_plans() so both layers agree until that seed is migrated
+-- to read from this table.
 -- ============================================================
 insert into plans (slug, name, price_cents, billing_interval, features, sort_order) values
 (
     'free', 'Free', 0, 'month',
-    '{"max_projects": 1, "max_agents": 1, "max_tokens": 1, "seats": 1, "log_retention_days": 7, "result_storage_gb": 1, "runs_per_day": 50, "support": "community"}'::jsonb,
+    '{"max_projects": 1, "cloud_agent_tokens": 1, "seats": 1, "log_retention_days": 7, "result_storage_gb": 1, "support": "community"}'::jsonb,
     0
 ),
 (
-    'pro', 'Pro', 1900, 'month',
-    '{"max_projects": 5, "max_agents": 3, "max_tokens": 5, "seats": 3, "log_retention_days": 30, "result_storage_gb": 10, "runs_per_day": 500, "support": "email", "webhooks": true, "schedules": true}'::jsonb,
+    'pro', 'Pro', 2900, 'month',
+    '{"max_projects": "unlimited", "cloud_agent_tokens": 10, "seats": 5, "log_retention_days": 30, "result_storage_gb": 25, "support": "priority", "private_cloud_agents": true, "audit_log": true}'::jsonb,
     1
-),
-(
-    'team', 'Team', 4900, 'month',
-    '{"max_projects": 20, "max_agents": 10, "max_tokens": 20, "seats": 10, "log_retention_days": 90, "result_storage_gb": 50, "runs_per_day": 2000, "support": "priority", "webhooks": true, "schedules": true, "audit_log": true}'::jsonb,
-    2
-),
-(
-    'business', 'Business', 14900, 'month',
-    '{"max_projects": -1, "max_agents": -1, "max_tokens": -1, "seats": 25, "log_retention_days": 365, "result_storage_gb": 200, "runs_per_day": -1, "support": "priority", "webhooks": true, "schedules": true, "audit_log": true, "sso": true, "rbac": true}'::jsonb,
-    3
 );
