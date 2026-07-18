@@ -1,0 +1,36 @@
+name: Deploy Render Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/saas/backend/**'
+      - 'apps/agent/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'render.yaml'
+      - '.github/workflows/deploy-render.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-render:
+    name: Trigger Render deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check deploy hook secret
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
+            echo "Missing RENDER_DEPLOY_HOOK_URL repository secret."
+            exit 1
+          fi
+
+      - name: Trigger Render deploy hook
+        run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"

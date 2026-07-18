@@ -15,8 +15,18 @@ import { Navigation, NavigationKey } from '@/components/dashboard/navigation';
 import { Dashboard } from '@/components/dashboard/dashboard';
 import { TestSections } from '@/components/dashboard/test-sections';
 import { SaasSections } from '@/components/dashboard/saas-sections';
+import { AuthGate } from '@/components/auth/auth-gate';
+import { UserMenu } from '@/components/auth/user-menu';
+import { UpdatePasswordForm } from '@/components/auth/update-password-form';
 
 export default function Home() {
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    return new URLSearchParams(window.location.hash.slice(1)).get('type') === 'recovery';
+  });
   const [activeTab, setActiveTab] = useState<NavigationKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false); // Start closed on initial load
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -46,6 +56,12 @@ export default function Home() {
     deleteSuite,
   } = useStorage();
 
+  // Supabase password recovery links can land at /#type=recovery.
+  useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    setIsPasswordRecovery(hashParams.get('type') === 'recovery');
+  }, []);
+
   // Initialize sidebar state based on screen size
   useEffect(() => {
     const handleResize = () => {
@@ -63,6 +79,10 @@ export default function Home() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  if (isPasswordRecovery) {
+    return <UpdatePasswordForm />;
+  }
 
   const handleCreateDefinition = async (testData: Omit<Definition, 'id' | 'createdAt'>) => {
     try {
@@ -225,10 +245,11 @@ export default function Home() {
       );
     }
 
-    return <SaasSections activeTab={activeTab} />;
+    return <SaasSections activeTab={activeTab} setActiveTab={setActiveTab} />;
   };
 
   return (
+    <AuthGate>
     <div className="min-h-screen bg-background">
       {/* Enhanced Header */}
       <header className="bg-background border-b">
@@ -253,15 +274,11 @@ export default function Home() {
                 <h1 className="text-2xl font-bold tracking-tight">
                   SparkTest
                 </h1>
-                <p className="text-xs text-muted-foreground">Test Execution Platform</p>
+                <p className="text-xs text-muted-foreground">Cloud Test Platform</p>
               </div>
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center space-x-2 bg-muted/50 px-3 py-1.5 rounded-md border">
-                <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                <Database className="h-4 w-4" />
-                <span>http://localhost:3001</span>
-              </div>
+              <UserMenu />
               <ThemeToggle />
             </div>
           </div>
@@ -327,5 +344,6 @@ export default function Home() {
         availableDefinitions={testDefinitions}
       />
     </div>
+    </AuthGate>
   );
 }

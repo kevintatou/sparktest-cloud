@@ -2,10 +2,11 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/toaster'
+import { AuthProvider } from '@/contexts/auth-context'
 
 export const metadata: Metadata = {
-  title: 'SparkTest SaaS',
-  description: 'Test execution platform for modern developers',
+  title: 'SparkTest Cloud',
+  description: 'Test orchestration platform for modern teams',
 }
 
 export default function RootLayout({
@@ -19,7 +20,9 @@ export default function RootLayout({
         <ThemeProvider
           defaultTheme="system"
         >
-          {children}
+          <AuthProvider>
+            {children}
+          </AuthProvider>
           <Toaster />
         </ThemeProvider>
       </body>
