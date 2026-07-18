@@ -5,12 +5,14 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { 
   LayoutDashboard, FileText, Play, Server, Layers,
-  CreditCard, Folder, Radio, ChevronRight, Settings
+  CreditCard, Folder, Radio, ChevronRight, Settings,
+  GitBranch, Network, BarChart3, Shield,
 } from 'lucide-react';
 
 export type NavigationKey = 
   | 'dashboard' | 'definitions' | 'runs' | 'executors' | 'suites'
-  | 'projects' | 'agents' | 'billing' | 'settings';
+  | 'projects' | 'agents' | 'billing' | 'settings'
+  | 'ci' | 'routing' | 'insights' | 'security';
 
 export interface NavigationProps {
   activeTab: NavigationKey;
@@ -29,6 +31,7 @@ const navigationGroups = [
       { key: 'runs', label: 'Runs', icon: Play },
       { key: 'executors', label: 'Executors', icon: Server },
       { key: 'suites', label: 'Suites', icon: Layers },
+      { key: 'ci', label: 'CI / Schedules', icon: GitBranch },
     ]
   },
   {
