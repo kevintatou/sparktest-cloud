@@ -242,6 +242,11 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab, setActive
         </div>
       );
 
+    case 'insights':
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { InsightsSection } = require('./insights-section');
+      return <InsightsSection />;
+
     case 'settings':
       return (
         <div className="space-y-6">

@@ -44,6 +44,12 @@ const navigationGroups = [
     ]
   },
   {
+    title: 'Analytics',
+    items: [
+      { key: 'insights', label: 'Insights', icon: BarChart3 },
+    ]
+  },
+  {
     title: 'Platform',
     items: [
       { key: 'settings', label: 'Settings', icon: Settings },
