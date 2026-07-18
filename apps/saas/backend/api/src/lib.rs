@@ -2,7 +2,7 @@ use axum::{
     body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -12,8 +12,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::Sha256;
 use sparktest_saas_core::{
-    Agent, AgentToken, AgentTokenCreated, Database, Executor, OrgSubscription, Organization, Plan,
-    Profile, Project, ProjectMember, SaasTestDefinition, SaasTestRun, TestSuite,
+    schedule_next_run_at, Agent, AgentToken, AgentTokenCreated, Database, Executor,
+    OrgSubscription, Organization, Plan, Profile, Project, ProjectMember, SaasTestDefinition,
+    SaasTestRun, Schedule, TestSuite,
 };
 use std::sync::Arc;
 use stripe::{
@@ -151,6 +152,14 @@ pub fn create_app(database: Database) -> Router {
         .route("/api/agent/next-run", post(agent_next_run))
         .route("/api/agent/runs/:id/status", post(agent_update_run_status))
         .route("/api/agent/trigger-run", post(agent_trigger_run))
+        .route(
+            "/api/ci/schedules",
+            get(list_schedules).post(create_schedule),
+        )
+        .route(
+            "/api/ci/schedules/:id",
+            patch(update_schedule).delete(delete_schedule),
+        )
         .route("/api/billing/plans", get(list_plans))
         .route("/api/billing/checkout", post(create_checkout_session))
         .route("/api/billing/webhook", post(handle_webhook))
@@ -762,6 +771,114 @@ async fn agent_trigger_run(
     db.create_test_run(&run)
         .await
         .map(|_| Json(run))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateScheduleRequest {
+    name: String,
+    definition_id: Option<Uuid>,
+    suite_id: Option<Uuid>,
+    cron_expression: String,
+    timezone: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateScheduleRequest {
+    enabled: bool,
+}
+
+async fn list_schedules(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<Schedule>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_schedules(ctx.project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn create_schedule(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateScheduleRequest>,
+) -> Result<Json<Schedule>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    if request.definition_id.is_none() && request.suite_id.is_none() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let timezone = request.timezone.unwrap_or_else(|| "UTC".to_string());
+    let now = Utc::now();
+    let next_run_at = schedule_next_run_at(&request.cron_expression, &timezone, now)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    let schedule = Schedule {
+        id: Uuid::new_v4(),
+        project_id: ctx.project_id,
+        name: request.name,
+        definition_id: request.definition_id,
+        suite_id: request.suite_id,
+        cron_expression: request.cron_expression,
+        timezone,
+        enabled: true,
+        last_run_at: None,
+        next_run_at,
+        run_count: 0,
+        created_at: now,
+        updated_at: now,
+    };
+
+    db.create_schedule(&schedule)
+        .await
+        .map(|_| Json(schedule))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn update_schedule(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(request): Json<UpdateScheduleRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_schedule(id).await {
+        Ok(Some(schedule)) if schedule.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.set_schedule_enabled(id, request.enabled)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn delete_schedule(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_schedule(id).await {
+        Ok(Some(schedule)) if schedule.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.delete_schedule(id)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 

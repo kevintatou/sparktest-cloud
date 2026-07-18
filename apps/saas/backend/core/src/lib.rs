@@ -66,6 +66,23 @@ pub struct TestRun {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Schedule {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub definition_id: Option<Uuid>,
+    pub suite_id: Option<Uuid>,
+    pub cron_expression: String,
+    pub timezone: String,
+    pub enabled: bool,
+    pub last_run_at: Option<DateTime<Utc>>,
+    pub next_run_at: Option<DateTime<Utc>>,
+    pub run_count: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Executor {
     pub id: Uuid,
     pub project_id: Uuid,
@@ -252,6 +269,7 @@ struct Store {
     plans: Vec<Plan>,
     organizations: Vec<Organization>,
     subscriptions: Vec<OrgSubscription>,
+    schedules: Vec<Schedule>,
 }
 
 #[derive(Clone)]
@@ -700,6 +718,189 @@ impl Database {
 
         let mut store = self.store.lock().unwrap();
         store.runs.push(run.clone());
+        Ok(())
+    }
+
+    // Schedules with a due next_run_at are claimed one at a time with
+    // `for update skip locked` (same pattern as claim_next_run) so multiple
+    // backend instances polling concurrently don't double-fire the same
+    // schedule. Claiming stamps updated_at immediately; the caller advances
+    // last_run_at/next_run_at/run_count via mark_schedule_fired once the run
+    // is actually created.
+    pub async fn claim_due_schedules(&self, limit: i64) -> Result<Vec<Schedule>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Schedule>(
+                r#"
+                update schedules
+                set updated_at = now()
+                where id in (
+                    select id from schedules
+                    where enabled = true and next_run_at is not null and next_run_at <= now()
+                    order by next_run_at asc
+                    for update skip locked
+                    limit $1
+                )
+                returning id, project_id, name, definition_id, suite_id, cron_expression, timezone,
+                          enabled, last_run_at, next_run_at, run_count, created_at, updated_at
+                "#,
+            )
+            .bind(limit)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let mut store = self.store.lock().unwrap();
+        let now = Utc::now();
+        let due: Vec<Schedule> = store
+            .schedules
+            .iter()
+            .filter(|s| s.enabled && s.next_run_at.is_some_and(|t| t <= now))
+            .take(limit as usize)
+            .cloned()
+            .collect();
+        for schedule in &due {
+            if let Some(existing) = store.schedules.iter_mut().find(|s| s.id == schedule.id) {
+                existing.updated_at = now;
+            }
+        }
+        Ok(due)
+    }
+
+    pub async fn mark_schedule_fired(
+        &self,
+        id: Uuid,
+        last_run_at: DateTime<Utc>,
+        next_run_at: Option<DateTime<Utc>>,
+    ) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                update schedules
+                set last_run_at = $2, next_run_at = $3, run_count = run_count + 1, updated_at = now()
+                where id = $1
+                "#,
+            )
+            .bind(id)
+            .bind(last_run_at)
+            .bind(next_run_at)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(schedule) = store.schedules.iter_mut().find(|s| s.id == id) {
+            schedule.last_run_at = Some(last_run_at);
+            schedule.next_run_at = next_run_at;
+            schedule.run_count += 1;
+            schedule.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    pub async fn create_schedule(&self, schedule: &Schedule) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                insert into schedules
+                  (id, project_id, name, definition_id, suite_id, cron_expression, timezone,
+                   enabled, last_run_at, next_run_at, run_count, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                "#,
+            )
+            .bind(schedule.id)
+            .bind(schedule.project_id)
+            .bind(&schedule.name)
+            .bind(schedule.definition_id)
+            .bind(schedule.suite_id)
+            .bind(&schedule.cron_expression)
+            .bind(&schedule.timezone)
+            .bind(schedule.enabled)
+            .bind(schedule.last_run_at)
+            .bind(schedule.next_run_at)
+            .bind(schedule.run_count)
+            .bind(schedule.created_at)
+            .bind(schedule.updated_at)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.schedules.push(schedule.clone());
+        Ok(())
+    }
+
+    pub async fn list_schedules(&self, project_id: Uuid) -> Result<Vec<Schedule>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Schedule>(
+                r#"
+                select id, project_id, name, definition_id, suite_id, cron_expression, timezone,
+                       enabled, last_run_at, next_run_at, run_count, created_at, updated_at
+                from schedules where project_id = $1 order by created_at desc
+                "#,
+            )
+            .bind(project_id)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .schedules
+            .iter()
+            .filter(|s| s.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    pub async fn get_schedule(&self, id: Uuid) -> Result<Option<Schedule>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Schedule>(
+                r#"
+                select id, project_id, name, definition_id, suite_id, cron_expression, timezone,
+                       enabled, last_run_at, next_run_at, run_count, created_at, updated_at
+                from schedules where id = $1
+                "#,
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store.schedules.iter().find(|s| s.id == id).cloned())
+    }
+
+    pub async fn set_schedule_enabled(&self, id: Uuid, enabled: bool) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("update schedules set enabled = $2, updated_at = now() where id = $1")
+                .bind(id)
+                .bind(enabled)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(schedule) = store.schedules.iter_mut().find(|s| s.id == id) {
+            schedule.enabled = enabled;
+            schedule.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    pub async fn delete_schedule(&self, id: Uuid) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("delete from schedules where id = $1")
+                .bind(id)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.schedules.retain(|s| s.id != id);
         Ok(())
     }
 
@@ -1533,6 +1734,88 @@ fn default_plans() -> Vec<Plan> {
     ]
 }
 
+// Scheduled runs (issue #75): polls schedules for a due next_run_at, creates
+// a queued test run the same way agent_trigger_run does (#74), then advances
+// last_run_at/next_run_at/run_count. Runs as a background tokio task started
+// from main.rs — not a route handler, since nothing external triggers it.
+pub fn schedule_next_run_at(
+    cron_expression: &str,
+    timezone: &str,
+    from: DateTime<Utc>,
+) -> Result<Option<DateTime<Utc>>, anyhow::Error> {
+    use chrono_tz::Tz;
+    use croner::Cron;
+
+    let tz: Tz = timezone
+        .parse()
+        .map_err(|_| anyhow::anyhow!("unknown timezone: {timezone}"))?;
+    let cron = Cron::new(cron_expression)
+        .parse()
+        .map_err(|e| anyhow::anyhow!("invalid cron expression '{cron_expression}': {e}"))?;
+
+    let from_tz = from.with_timezone(&tz);
+    Ok(cron
+        .find_next_occurrence(&from_tz, false)
+        .ok()
+        .map(|next| next.with_timezone(&Utc)))
+}
+
+pub async fn run_due_schedules_once(db: &Database) -> Result<usize, anyhow::Error> {
+    let due = db.claim_due_schedules(20).await?;
+    let mut fired = 0;
+
+    for schedule in due {
+        let now = Utc::now();
+        let run = TestRun {
+            id: Uuid::new_v4(),
+            project_id: schedule.project_id,
+            definition_id: schedule.definition_id,
+            suite_id: schedule.suite_id,
+            executor_id: None,
+            agent_id: None,
+            status: "queued".to_string(),
+            result: None,
+            error: None,
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+
+        if let Err(error) = db.create_test_run(&run).await {
+            tracing::error!(schedule_id = %schedule.id, %error, "failed to create scheduled run");
+            continue;
+        }
+
+        let next_run_at = schedule_next_run_at(&schedule.cron_expression, &schedule.timezone, now)
+            .unwrap_or(None);
+        if let Err(error) = db.mark_schedule_fired(schedule.id, now, next_run_at).await {
+            tracing::error!(schedule_id = %schedule.id, %error, "failed to advance schedule after firing");
+        }
+        fired += 1;
+    }
+
+    Ok(fired)
+}
+
+/// Spawns a background task that polls for due schedules every `interval`.
+/// A failed poll is logged and retried on the next tick rather than crashing
+/// the process — a scheduler outage should not take down the API server.
+pub fn spawn_scheduler(db: Database, interval: std::time::Duration) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        loop {
+            ticker.tick().await;
+            match run_due_schedules_once(&db).await {
+                Ok(0) => {}
+                Ok(fired) => tracing::info!(fired, "scheduler fired due runs"),
+                Err(error) => tracing::error!(%error, "scheduler poll failed"),
+            }
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1644,5 +1927,127 @@ mod tests {
             .await
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn schedule_next_run_at_computes_the_next_occurrence() {
+        // 2026-07-18 is a Saturday; "0 9 * * MON" is every Monday at 09:00 UTC.
+        let from = chrono::DateTime::parse_from_rfc3339("2026-07-18T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let next = schedule_next_run_at("0 9 * * MON", "UTC", from)
+            .unwrap()
+            .unwrap();
+        assert_eq!(next.format("%Y-%m-%d %H:%M").to_string(), "2026-07-20 09:00");
+    }
+
+    #[test]
+    fn schedule_next_run_at_rejects_invalid_cron() {
+        let from = Utc::now();
+        assert!(schedule_next_run_at("not a cron expression", "UTC", from).is_err());
+    }
+
+    #[test]
+    fn schedule_next_run_at_rejects_unknown_timezone() {
+        let from = Utc::now();
+        assert!(schedule_next_run_at("* * * * *", "Not/ARealZone", from).is_err());
+    }
+
+    #[tokio::test]
+    async fn due_schedule_fires_a_run_and_advances_next_run_at() {
+        let db = Database::new("test://").await.unwrap();
+        let definition = TestDefinition {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            name: "smoke test".to_string(),
+            description: None,
+            image: "node:20".to_string(),
+            commands: vec!["npm test".to_string()],
+            executor_id: None,
+            labels: Default::default(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        db.create_test_definition(&definition).await.unwrap();
+
+        let now = Utc::now();
+        let schedule = Schedule {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            name: "nightly".to_string(),
+            definition_id: Some(definition.id),
+            suite_id: None,
+            cron_expression: "* * * * *".to_string(),
+            timezone: "UTC".to_string(),
+            enabled: true,
+            last_run_at: None,
+            next_run_at: Some(now - chrono::Duration::minutes(1)), // already due
+            run_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        db.create_schedule(&schedule).await.unwrap();
+
+        let fired = run_due_schedules_once(&db).await.unwrap();
+        assert_eq!(fired, 1);
+
+        let runs = db
+            .list_test_runs(Some(db.default_project_id()), None)
+            .await
+            .unwrap();
+        assert_eq!(runs.len(), 1, "a queued run was created for the due schedule");
+        assert_eq!(runs[0].definition_id, Some(definition.id));
+        assert_eq!(runs[0].status, "queued");
+
+        let updated = db.get_schedule(schedule.id).await.unwrap().unwrap();
+        assert_eq!(updated.run_count, 1);
+        assert!(updated.last_run_at.is_some());
+        assert!(
+            updated.next_run_at.unwrap() > now,
+            "next_run_at advanced past the fire time"
+        );
+
+        // A schedule not yet due must not fire again.
+        let fired_again = run_due_schedules_once(&db).await.unwrap();
+        assert_eq!(fired_again, 0);
+    }
+
+    #[tokio::test]
+    async fn disabled_schedule_never_fires() {
+        let db = Database::new("test://").await.unwrap();
+        let definition = TestDefinition {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            name: "smoke test".to_string(),
+            description: None,
+            image: "node:20".to_string(),
+            commands: vec!["npm test".to_string()],
+            executor_id: None,
+            labels: Default::default(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        db.create_test_definition(&definition).await.unwrap();
+
+        let now = Utc::now();
+        let schedule = Schedule {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            name: "disabled".to_string(),
+            definition_id: Some(definition.id),
+            suite_id: None,
+            cron_expression: "* * * * *".to_string(),
+            timezone: "UTC".to_string(),
+            enabled: false,
+            last_run_at: None,
+            next_run_at: Some(now - chrono::Duration::minutes(1)),
+            run_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        db.create_schedule(&schedule).await.unwrap();
+
+        let fired = run_due_schedules_once(&db).await.unwrap();
+        assert_eq!(fired, 0);
     }
 }

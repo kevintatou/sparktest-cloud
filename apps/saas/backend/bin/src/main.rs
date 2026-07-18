@@ -1,6 +1,7 @@
 use sparktest_saas_api::create_app;
-use sparktest_saas_core::Database;
+use sparktest_saas_core::{spawn_scheduler, Database};
 use std::env;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tracing::info;
 
@@ -15,6 +16,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "memory://local".to_string());
     let database = Database::new(&database_url).await?;
+
+    info!("Starting scheduled-runs poller");
+    spawn_scheduler(database.clone(), Duration::from_secs(30));
 
     let app = create_app(database);
     let listener = TcpListener::bind(&addr).await?;
