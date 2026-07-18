@@ -53,6 +53,7 @@ const navigationGroups = [
     title: 'Platform',
     items: [
       { key: 'settings', label: 'Settings', icon: Settings },
+      { key: 'security', label: 'Security', icon: Shield },
     ]
   }
 ];
