@@ -1,5 +1,5 @@
 use sparktest_saas_api::create_app;
-use sparktest_saas_core::{spawn_scheduler, Database};
+use sparktest_saas_core::{spawn_retention_pruner, spawn_scheduler, Database};
 use std::env;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -19,6 +19,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting scheduled-runs poller");
     spawn_scheduler(database.clone(), Duration::from_secs(30));
+
+    info!("Starting retention pruner");
+    spawn_retention_pruner(database.clone(), Duration::from_secs(3600));
 
     let app = create_app(database);
     let listener = TcpListener::bind(&addr).await?;

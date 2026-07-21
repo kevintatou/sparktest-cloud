@@ -13,9 +13,9 @@ use serde_json::{json, Value};
 use sha2::Sha256;
 use sparktest_saas_core::{
     deliver_run_event, schedule_next_run_at, Agent, AgentToken, AgentTokenCreated,
-    AgentWithLabels, AuditLog, Database, Environment, Executor, OrgSubscription, Organization,
-    Plan, Profile, Project, ProjectMember, RoutingRule, SaasTestDefinition, SaasTestRun,
-    Schedule, TestSuite, Webhook, WebhookDelivery,
+    AgentWithLabels, Artifact, AuditLog, Database, Environment, Executor, FlakyTest,
+    OrgSubscription, Organization, Plan, Profile, Project, ProjectMember, RetentionPolicy,
+    RoutingRule, SaasTestDefinition, SaasTestRun, Schedule, TestSuite, Webhook, WebhookDelivery,
 };
 use std::sync::Arc;
 use stripe::{
@@ -196,6 +196,17 @@ pub fn create_app(database: Database) -> Router {
             patch(set_agent_environment),
         )
         .route("/api/security/audit", get(list_audit_logs))
+        .route(
+            "/api/insights/retention",
+            get(list_retention_policies).put(upsert_retention_policy),
+        )
+        .route(
+            "/api/insights/artifacts",
+            get(list_artifacts),
+        )
+        .route("/api/insights/artifacts/:id", delete(delete_artifact))
+        .route("/api/insights/flaky", get(list_flaky_tests))
+        .route("/api/insights/flaky/:id", patch(update_flaky_test_status))
         .route("/api/billing/plans", get(list_plans))
         .route("/api/billing/checkout", post(create_checkout_session))
         .route("/api/billing/webhook", post(handle_webhook))
@@ -1377,6 +1388,122 @@ async fn list_audit_logs(
     db.list_audit_logs(ctx.project_id, query.limit.unwrap_or(100).clamp(1, 500))
         .await
         .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertRetentionPolicyRequest {
+    resource_type: String,
+    retention_days: i32,
+}
+
+async fn list_retention_policies(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<RetentionPolicy>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_retention_policies(ctx.project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn upsert_retention_policy(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<UpsertRetentionPolicyRequest>,
+) -> Result<Json<RetentionPolicy>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    if request.retention_days < 1 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    db.upsert_retention_policy(ctx.project_id, &request.resource_type, request.retention_days)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Deserialize)]
+struct ArtifactsQuery {
+    limit: Option<i64>,
+}
+
+async fn list_artifacts(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ArtifactsQuery>,
+) -> Result<Json<Vec<Artifact>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_artifacts(ctx.project_id, query.limit.unwrap_or(50).clamp(1, 500))
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn delete_artifact(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_artifact(id).await {
+        Ok(Some(artifact)) if artifact.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.delete_artifact(id)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn list_flaky_tests(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<FlakyTest>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_flaky_tests(ctx.project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateFlakyTestRequest {
+    status: String,
+}
+
+async fn update_flaky_test_status(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(request): Json<UpdateFlakyTestRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_flaky_test(id).await {
+        Ok(Some(test)) if test.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    if !matches!(request.status.as_str(), "active" | "resolved" | "muted") {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    db.set_flaky_test_status(id, &request.status)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
