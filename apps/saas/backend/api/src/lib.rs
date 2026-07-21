@@ -12,9 +12,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::Sha256;
 use sparktest_saas_core::{
-    deliver_run_event, schedule_next_run_at, Agent, AgentToken, AgentTokenCreated, Database,
-    Executor, OrgSubscription, Organization, Plan, Profile, Project, ProjectMember,
-    SaasTestDefinition, SaasTestRun, Schedule, TestSuite, Webhook, WebhookDelivery,
+    deliver_run_event, schedule_next_run_at, Agent, AgentToken, AgentTokenCreated,
+    AgentWithLabels, Database, Environment, Executor, OrgSubscription, Organization, Plan,
+    Profile, Project, ProjectMember, RoutingRule, SaasTestDefinition, SaasTestRun, Schedule,
+    TestSuite, Webhook, WebhookDelivery,
 };
 use std::sync::Arc;
 use stripe::{
@@ -171,6 +172,28 @@ pub fn create_app(database: Database) -> Router {
         .route(
             "/api/ci/webhooks/:id/deliveries",
             get(list_webhook_deliveries),
+        )
+        .route(
+            "/api/routing/environments",
+            get(list_environments).post(create_environment),
+        )
+        .route("/api/routing/environments/:id", delete(delete_environment))
+        .route(
+            "/api/routing/rules",
+            get(list_routing_rules).post(create_routing_rule),
+        )
+        .route(
+            "/api/routing/rules/:id",
+            patch(update_routing_rule).delete(delete_routing_rule),
+        )
+        .route("/api/routing/agents", get(list_agents_with_labels))
+        .route(
+            "/api/agents/:id/labels",
+            post(set_agent_label).delete(delete_agent_label),
+        )
+        .route(
+            "/api/agents/:id/environment",
+            patch(set_agent_environment),
         )
         .route("/api/billing/plans", get(list_plans))
         .route("/api/billing/checkout", post(create_checkout_session))
@@ -683,6 +706,283 @@ async fn list_agents(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+async fn list_agents_with_labels(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<AgentWithLabels>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_agents_with_labels(ctx.project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Deserialize)]
+struct SetAgentLabelRequest {
+    key: String,
+    value: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteAgentLabelRequest {
+    key: String,
+}
+
+// Labels are set/removed "via settings" (issue #77's own scope text) rather
+// than at check-in, since AgentCheckInRequest is the agent's own self-report
+// and label assignment is an operator/dashboard action.
+async fn set_agent_label(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(request): Json<SetAgentLabelRequest>,
+) -> Result<Json<Vec<AgentLabelResponse>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_agent(id).await {
+        Ok(Some(agent)) if agent.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.set_agent_label(id, &request.key, &request.value)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    db.list_agent_labels(id)
+        .await
+        .map(|labels| Json(labels.into_iter().map(Into::into).collect()))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn delete_agent_label(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(request): Json<DeleteAgentLabelRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_agent(id).await {
+        Ok(Some(agent)) if agent.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.delete_agent_label(id, &request.key)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Deserialize)]
+struct SetAgentEnvironmentRequest {
+    environment_id: Option<Uuid>,
+}
+
+async fn set_agent_environment(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(request): Json<SetAgentEnvironmentRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_agent(id).await {
+        Ok(Some(agent)) if agent.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.set_agent_environment(id, request.environment_id)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Serialize)]
+struct AgentLabelResponse {
+    key: String,
+    value: String,
+}
+
+impl From<sparktest_saas_core::AgentLabel> for AgentLabelResponse {
+    fn from(label: sparktest_saas_core::AgentLabel) -> Self {
+        Self { key: label.key, value: label.value }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateEnvironmentRequest {
+    name: String,
+    slug: String,
+}
+
+async fn list_environments(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<Environment>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_environments(ctx.project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn create_environment(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateEnvironmentRequest>,
+) -> Result<Json<Environment>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    let now = Utc::now();
+    let environment = Environment {
+        id: Uuid::new_v4(),
+        project_id: ctx.project_id,
+        name: request.name,
+        slug: request.slug,
+        description: None,
+        color: "#6366f1".to_string(),
+        is_default: false,
+        created_at: now,
+        updated_at: now,
+    };
+
+    db.create_environment(&environment)
+        .await
+        .map(|_| Json(environment))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn delete_environment(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_environment(id).await {
+        Ok(Some(env)) if env.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.delete_environment(id)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateRoutingRuleRequest {
+    name: String,
+    description: Option<String>,
+    match_labels: Value,
+    target_environment_id: Option<Uuid>,
+    target_agent_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateRoutingRuleRequest {
+    enabled: bool,
+}
+
+async fn list_routing_rules(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<RoutingRule>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_routing_rules(ctx.project_id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn create_routing_rule(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateRoutingRuleRequest>,
+) -> Result<Json<RoutingRule>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    let now = Utc::now();
+    let rule = RoutingRule {
+        id: Uuid::new_v4(),
+        project_id: ctx.project_id,
+        name: request.name,
+        description: request.description,
+        match_labels: request.match_labels,
+        target_environment_id: request.target_environment_id,
+        target_agent_id: request.target_agent_id,
+        priority: 0,
+        enabled: true,
+        created_at: now,
+        updated_at: now,
+    };
+
+    db.create_routing_rule(&rule)
+        .await
+        .map(|_| Json(rule))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn update_routing_rule(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(request): Json<UpdateRoutingRuleRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_routing_rule(id).await {
+        Ok(Some(rule)) if rule.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.set_routing_rule_enabled(id, request.enabled)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn delete_routing_rule(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+
+    match db.get_routing_rule(id).await {
+        Ok(Some(rule)) if rule.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
+    db.delete_routing_rule(id)
+        .await
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 async fn agent_check_in(
     State(db): State<AppState>,
     headers: HeaderMap,
@@ -787,6 +1087,7 @@ async fn agent_trigger_run(
         finished_at: None,
         created_at: now,
         updated_at: now,
+        target_environment_id: None,
     };
     db.create_test_run(&run)
         .await
