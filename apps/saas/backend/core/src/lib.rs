@@ -112,6 +112,21 @@ pub struct WebhookDelivery {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AuditLog {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub actor_id: Option<Uuid>,
+    pub actor_email: Option<String>,
+    pub action: String,
+    pub resource_type: String,
+    pub resource_id: Option<String>,
+    pub metadata: Value,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Executor {
     pub id: Uuid,
     pub project_id: Uuid,
@@ -361,6 +376,7 @@ struct Store {
     environments: Vec<Environment>,
     agent_labels: Vec<AgentLabel>,
     routing_rules: Vec<RoutingRule>,
+    audit_logs: Vec<AuditLog>,
 }
 
 #[derive(Clone)]
@@ -1508,6 +1524,89 @@ impl Database {
                     })
                     .unwrap_or(false)
         }))
+    }
+
+    // Audit trail (issue #79): project membership changes, agent token
+    // create/revoke, run creation, and billing changes, per the issue's own
+    // scope. Fire-and-record like webhook delivery — a failed audit write is
+    // logged and must not fail the action it's recording, which already
+    // succeeded by the time this runs.
+    pub async fn record_audit_log(
+        &self,
+        project_id: Uuid,
+        actor_id: Option<Uuid>,
+        actor_email: Option<&str>,
+        action: &str,
+        resource_type: &str,
+        resource_id: Option<&str>,
+        metadata: Value,
+    ) -> Result<(), anyhow::Error> {
+        let entry = AuditLog {
+            id: Uuid::new_v4(),
+            project_id,
+            actor_id,
+            actor_email: actor_email.map(ToOwned::to_owned),
+            action: action.to_string(),
+            resource_type: resource_type.to_string(),
+            resource_id: resource_id.map(ToOwned::to_owned),
+            metadata,
+            ip_address: None,
+            user_agent: None,
+            created_at: Utc::now(),
+        };
+
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                insert into audit_logs
+                  (id, project_id, actor_id, actor_email, action, resource_type, resource_id, metadata, created_at)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                "#,
+            )
+            .bind(entry.id)
+            .bind(entry.project_id)
+            .bind(entry.actor_id)
+            .bind(&entry.actor_email)
+            .bind(&entry.action)
+            .bind(&entry.resource_type)
+            .bind(&entry.resource_id)
+            .bind(&entry.metadata)
+            .bind(entry.created_at)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.audit_logs.push(entry);
+        Ok(())
+    }
+
+    pub async fn list_audit_logs(&self, project_id: Uuid, limit: i64) -> Result<Vec<AuditLog>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, AuditLog>(
+                r#"
+                select id, project_id, actor_id, actor_email, action, resource_type, resource_id, metadata,
+                       ip_address::text as ip_address, user_agent, created_at
+                from audit_logs where project_id = $1 order by created_at desc limit $2
+                "#,
+            )
+            .bind(project_id)
+            .bind(limit)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        let mut entries: Vec<AuditLog> = store
+            .audit_logs
+            .iter()
+            .filter(|entry| entry.project_id == project_id)
+            .cloned()
+            .collect();
+        entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        entries.truncate(limit.max(0) as usize);
+        Ok(entries)
     }
 
     pub async fn update_test_run(&self, run: &TestRun) -> Result<(), anyhow::Error> {
@@ -3185,5 +3284,109 @@ mod tests {
 
         let claimed = db.claim_next_run(project_id, agent.id).await.unwrap();
         assert!(claimed.is_some(), "existing untargeted behavior is unchanged");
+    }
+
+    #[tokio::test]
+    async fn audit_log_records_and_lists_by_project() {
+        let db = Database::new("test://").await.unwrap();
+        let project_id = db.default_project_id();
+        let actor_id = Uuid::new_v4();
+
+        db.record_audit_log(
+            project_id,
+            Some(actor_id),
+            Some("kevin@example.com"),
+            "agent_token.created",
+            "agent_token",
+            Some("token-123"),
+            serde_json::json!({ "name": "cluster" }),
+        )
+        .await
+        .unwrap();
+
+        db.record_audit_log(
+            project_id,
+            Some(actor_id),
+            Some("kevin@example.com"),
+            "run.created",
+            "test_run",
+            None,
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+
+        let entries = db.list_audit_logs(project_id, 100).await.unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].action, "run.created", "most recent action listed first");
+        assert_eq!(entries[1].action, "agent_token.created");
+        assert_eq!(entries[1].resource_id.as_deref(), Some("token-123"));
+    }
+
+    #[tokio::test]
+    async fn audit_log_is_scoped_to_project_and_respects_limit() {
+        let db = Database::new("test://").await.unwrap();
+        let project_id = db.default_project_id();
+        let other_project_id = Uuid::new_v4();
+
+        for i in 0..5 {
+            db.record_audit_log(
+                project_id,
+                None,
+                None,
+                "run.created",
+                "test_run",
+                Some(&i.to_string()),
+                serde_json::json!({}),
+            )
+            .await
+            .unwrap();
+        }
+        db.record_audit_log(other_project_id, None, None, "run.created", "test_run", None, serde_json::json!({}))
+            .await
+            .unwrap();
+
+        let entries = db.list_audit_logs(project_id, 100).await.unwrap();
+        assert_eq!(entries.len(), 5, "only this project's entries");
+
+        let limited = db.list_audit_logs(project_id, 2).await.unwrap();
+        assert_eq!(limited.len(), 2, "limit is respected");
+    }
+
+    #[tokio::test]
+    async fn creating_and_revoking_an_agent_token_produces_audit_entries() {
+        let db = Database::new("test://").await.unwrap();
+        let project_id = db.default_project_id();
+
+        let token = db.create_agent_token(project_id, "cluster".to_string()).await.unwrap();
+        db.record_audit_log(
+            project_id,
+            None,
+            None,
+            "agent_token.created",
+            "agent_token",
+            Some(&token.id.to_string()),
+            serde_json::json!({ "name": "cluster" }),
+        )
+        .await
+        .unwrap();
+
+        db.revoke_agent_token(token.id).await.unwrap();
+        db.record_audit_log(
+            project_id,
+            None,
+            None,
+            "agent_token.revoked",
+            "agent_token",
+            Some(&token.id.to_string()),
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+
+        let entries = db.list_audit_logs(project_id, 100).await.unwrap();
+        let actions: Vec<&str> = entries.iter().map(|e| e.action.as_str()).collect();
+        assert!(actions.contains(&"agent_token.created"));
+        assert!(actions.contains(&"agent_token.revoked"));
     }
 }

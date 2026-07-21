@@ -1,6 +1,6 @@
 use axum::{
     body::Bytes,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{delete, get, patch, post},
     Json, Router,
@@ -13,9 +13,9 @@ use serde_json::{json, Value};
 use sha2::Sha256;
 use sparktest_saas_core::{
     deliver_run_event, schedule_next_run_at, Agent, AgentToken, AgentTokenCreated,
-    AgentWithLabels, Database, Environment, Executor, OrgSubscription, Organization, Plan,
-    Profile, Project, ProjectMember, RoutingRule, SaasTestDefinition, SaasTestRun, Schedule,
-    TestSuite, Webhook, WebhookDelivery,
+    AgentWithLabels, AuditLog, Database, Environment, Executor, OrgSubscription, Organization,
+    Plan, Profile, Project, ProjectMember, RoutingRule, SaasTestDefinition, SaasTestRun,
+    Schedule, TestSuite, Webhook, WebhookDelivery,
 };
 use std::sync::Arc;
 use stripe::{
@@ -195,6 +195,7 @@ pub fn create_app(database: Database) -> Router {
             "/api/agents/:id/environment",
             patch(set_agent_environment),
         )
+        .route("/api/security/audit", get(list_audit_logs))
         .route("/api/billing/plans", get(list_plans))
         .route("/api/billing/checkout", post(create_checkout_session))
         .route("/api/billing/webhook", post(handle_webhook))
@@ -446,6 +447,18 @@ async fn create_test_run(
 
     deliver_run_event(&db, run.project_id, "queued", &run).await;
 
+    let _ = db
+        .record_audit_log(
+            run.project_id,
+            ctx.user_id,
+            ctx.email.as_deref(),
+            "run.created",
+            "test_run",
+            Some(&run.id.to_string()),
+            json!({ "definition_id": run.definition_id, "suite_id": run.suite_id }),
+        )
+        .await;
+
     Ok(Json(run))
 }
 
@@ -649,10 +662,25 @@ async fn create_agent_token(
     let ctx = human_context(&headers, &db);
     ensure_project_access(&db, &ctx).await?;
     enforce_agent_limit(&db, ctx.project_id).await?;
-    db.create_agent_token(ctx.project_id, request.name)
+    let token_name = request.name.clone();
+    let token = db
+        .create_agent_token(ctx.project_id, request.name)
         .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let _ = db
+        .record_audit_log(
+            ctx.project_id,
+            ctx.user_id,
+            ctx.email.as_deref(),
+            "agent_token.created",
+            "agent_token",
+            Some(&token.id.to_string()),
+            json!({ "name": token_name }),
+        )
+        .await;
+
+    Ok(Json(token))
 }
 
 async fn enforce_project_limit(db: &Database) -> Result<(), StatusCode> {
@@ -688,6 +716,19 @@ async fn revoke_agent_token(
 ) -> Result<StatusCode, StatusCode> {
     let ctx = human_context(&headers, &db);
     ensure_project_access(&db, &ctx).await?;
+
+    let _ = db
+        .record_audit_log(
+            ctx.project_id,
+            ctx.user_id,
+            ctx.email.as_deref(),
+            "agent_token.revoked",
+            "agent_token",
+            Some(&id.to_string()),
+            json!({}),
+        )
+        .await;
+
     db.revoke_agent_token(id)
         .await
         .map(|_| StatusCode::NO_CONTENT)
@@ -1316,6 +1357,24 @@ async fn list_webhook_deliveries(
     }
 
     db.list_webhook_deliveries(id)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Deserialize)]
+struct AuditLogQuery {
+    limit: Option<i64>,
+}
+
+async fn list_audit_logs(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<AuditLogQuery>,
+) -> Result<Json<Vec<AuditLog>>, StatusCode> {
+    let ctx = human_context(&headers, &db);
+    ensure_project_access(&db, &ctx).await?;
+    db.list_audit_logs(ctx.project_id, query.limit.unwrap_or(100).clamp(1, 500))
         .await
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
