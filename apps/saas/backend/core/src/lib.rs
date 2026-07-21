@@ -63,6 +63,8 @@ pub struct TestRun {
     pub finished_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub target_environment_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -165,6 +167,61 @@ pub struct Agent {
     pub last_seen_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub environment_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Environment {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub description: Option<String>,
+    pub color: String,
+    pub is_default: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AgentLabel {
+    pub id: Uuid,
+    pub agent_id: Uuid,
+    pub key: String,
+    pub value: String,
+    pub created_at: DateTime<Utc>,
+}
+
+// Matches routing-section.tsx's AgentWithLabels — the shape the frontend
+// actually renders (agent + its labels + environment), not the raw Agent row.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentWithLabels {
+    pub id: Uuid,
+    pub name: String,
+    pub status: String,
+    pub environment_id: Option<Uuid>,
+    pub labels: Vec<AgentLabelPair>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentLabelPair {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct RoutingRule {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub match_labels: Value,
+    pub target_environment_id: Option<Uuid>,
+    pub target_agent_id: Option<Uuid>,
+    pub priority: i32,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,6 +316,7 @@ struct TestRunRow {
     finished_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    target_environment_id: Option<Uuid>,
 }
 
 impl From<TestRunRow> for TestRun {
@@ -278,6 +336,7 @@ impl From<TestRunRow> for TestRun {
             finished_at: row.finished_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            target_environment_id: row.target_environment_id,
         }
     }
 }
@@ -299,6 +358,9 @@ struct Store {
     schedules: Vec<Schedule>,
     webhooks: Vec<Webhook>,
     webhook_deliveries: Vec<WebhookDelivery>,
+    environments: Vec<Environment>,
+    agent_labels: Vec<AgentLabel>,
+    routing_rules: Vec<RoutingRule>,
 }
 
 #[derive(Clone)]
@@ -722,8 +784,8 @@ impl Database {
             sqlx::query(
                 r#"
                 insert into test_runs
-                  (id, project_id, definition_id, suite_id, executor_id, agent_id, status, result, error, queued_at, started_at, finished_at, created_at, updated_at)
-                values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                  (id, project_id, definition_id, suite_id, executor_id, agent_id, status, result, error, queued_at, started_at, finished_at, created_at, updated_at, target_environment_id)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                 "#,
             )
             .bind(run.id)
@@ -740,6 +802,7 @@ impl Database {
             .bind(run.finished_at)
             .bind(run.created_at)
             .bind(run.updated_at)
+            .bind(run.target_environment_id)
             .execute(pool)
             .await?;
             return Ok(());
@@ -1122,6 +1185,331 @@ impl Database {
             .collect())
     }
 
+    pub async fn create_environment(&self, environment: &Environment) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                insert into environments (id, project_id, name, slug, description, color, is_default, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                "#,
+            )
+            .bind(environment.id)
+            .bind(environment.project_id)
+            .bind(&environment.name)
+            .bind(&environment.slug)
+            .bind(&environment.description)
+            .bind(&environment.color)
+            .bind(environment.is_default)
+            .bind(environment.created_at)
+            .bind(environment.updated_at)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.environments.push(environment.clone());
+        Ok(())
+    }
+
+    pub async fn list_environments(&self, project_id: Uuid) -> Result<Vec<Environment>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Environment>(
+                r#"
+                select id, project_id, name, slug, description, color, is_default, created_at, updated_at
+                from environments where project_id = $1 order by created_at asc
+                "#,
+            )
+            .bind(project_id)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .environments
+            .iter()
+            .filter(|e| e.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    pub async fn get_environment(&self, id: Uuid) -> Result<Option<Environment>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Environment>(
+                r#"
+                select id, project_id, name, slug, description, color, is_default, created_at, updated_at
+                from environments where id = $1
+                "#,
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store.environments.iter().find(|e| e.id == id).cloned())
+    }
+
+    pub async fn delete_environment(&self, id: Uuid) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("delete from environments where id = $1")
+                .bind(id)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.environments.retain(|e| e.id != id);
+        Ok(())
+    }
+
+    pub async fn list_agent_labels(&self, agent_id: Uuid) -> Result<Vec<AgentLabel>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, AgentLabel>(
+                "select id, agent_id, key, value, created_at from agent_labels where agent_id = $1 order by key asc",
+            )
+            .bind(agent_id)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .agent_labels
+            .iter()
+            .filter(|l| l.agent_id == agent_id)
+            .cloned()
+            .collect())
+    }
+
+    // Upsert-by-(agent_id, key), matching the table's unique constraint —
+    // setting a label a caller has already set updates the value instead of
+    // erroring or duplicating.
+    pub async fn set_agent_label(&self, agent_id: Uuid, key: &str, value: &str) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                insert into agent_labels (agent_id, key, value)
+                values ($1, $2, $3)
+                on conflict (agent_id, key) do update set value = excluded.value
+                "#,
+            )
+            .bind(agent_id)
+            .bind(key)
+            .bind(value)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(existing) = store
+            .agent_labels
+            .iter_mut()
+            .find(|l| l.agent_id == agent_id && l.key == key)
+        {
+            existing.value = value.to_string();
+        } else {
+            store.agent_labels.push(AgentLabel {
+                id: Uuid::new_v4(),
+                agent_id,
+                key: key.to_string(),
+                value: value.to_string(),
+                created_at: Utc::now(),
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn delete_agent_label(&self, agent_id: Uuid, key: &str) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("delete from agent_labels where agent_id = $1 and key = $2")
+                .bind(agent_id)
+                .bind(key)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.agent_labels.retain(|l| !(l.agent_id == agent_id && l.key == key));
+        Ok(())
+    }
+
+    pub async fn set_agent_environment(
+        &self,
+        agent_id: Uuid,
+        environment_id: Option<Uuid>,
+    ) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("update agents set environment_id = $2, updated_at = now() where id = $1")
+                .bind(agent_id)
+                .bind(environment_id)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(agent) = store.agents.iter_mut().find(|a| a.id == agent_id) {
+            agent.environment_id = environment_id;
+            agent.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    // Joins each project agent with its labels for the /api/routing/agents
+    // view (routing-section.tsx's AgentWithLabels).
+    pub async fn list_agents_with_labels(&self, project_id: Uuid) -> Result<Vec<AgentWithLabels>, anyhow::Error> {
+        let agents = self.list_agents(project_id).await?;
+        let mut result = Vec::with_capacity(agents.len());
+        for agent in agents {
+            let labels = self
+                .list_agent_labels(agent.id)
+                .await?
+                .into_iter()
+                .map(|l| AgentLabelPair { key: l.key, value: l.value })
+                .collect();
+            result.push(AgentWithLabels {
+                id: agent.id,
+                name: agent.name,
+                status: agent.status,
+                environment_id: agent.environment_id,
+                labels,
+            });
+        }
+        Ok(result)
+    }
+
+    pub async fn create_routing_rule(&self, rule: &RoutingRule) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query(
+                r#"
+                insert into routing_rules
+                  (id, project_id, name, description, match_labels, target_environment_id, target_agent_id, priority, enabled, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                "#,
+            )
+            .bind(rule.id)
+            .bind(rule.project_id)
+            .bind(&rule.name)
+            .bind(&rule.description)
+            .bind(&rule.match_labels)
+            .bind(rule.target_environment_id)
+            .bind(rule.target_agent_id)
+            .bind(rule.priority)
+            .bind(rule.enabled)
+            .bind(rule.created_at)
+            .bind(rule.updated_at)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.routing_rules.push(rule.clone());
+        Ok(())
+    }
+
+    pub async fn list_routing_rules(&self, project_id: Uuid) -> Result<Vec<RoutingRule>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, RoutingRule>(
+                r#"
+                select id, project_id, name, description, match_labels, target_environment_id, target_agent_id, priority, enabled, created_at, updated_at
+                from routing_rules where project_id = $1 order by priority desc, created_at asc
+                "#,
+            )
+            .bind(project_id)
+            .fetch_all(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .routing_rules
+            .iter()
+            .filter(|r| r.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    pub async fn get_routing_rule(&self, id: Uuid) -> Result<Option<RoutingRule>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, RoutingRule>(
+                r#"
+                select id, project_id, name, description, match_labels, target_environment_id, target_agent_id, priority, enabled, created_at, updated_at
+                from routing_rules where id = $1
+                "#,
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store.routing_rules.iter().find(|r| r.id == id).cloned())
+    }
+
+    pub async fn set_routing_rule_enabled(&self, id: Uuid, enabled: bool) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("update routing_rules set enabled = $2, updated_at = now() where id = $1")
+                .bind(id)
+                .bind(enabled)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        if let Some(rule) = store.routing_rules.iter_mut().find(|r| r.id == id) {
+            rule.enabled = enabled;
+            rule.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    pub async fn delete_routing_rule(&self, id: Uuid) -> Result<(), anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            sqlx::query("delete from routing_rules where id = $1")
+                .bind(id)
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let mut store = self.store.lock().unwrap();
+        store.routing_rules.retain(|r| r.id != id);
+        Ok(())
+    }
+
+    // Matches routing rules against an agent's labels (issue #78): a rule
+    // matches when every key/value pair in match_labels is present in the
+    // agent's own labels. Highest-priority match wins; ties break by
+    // creation order (list_routing_rules already orders priority desc,
+    // created_at asc). Returns the target (environment or agent) of the
+    // first matching rule, or None if no enabled rule matches.
+    pub async fn route_agent_for_labels(
+        &self,
+        project_id: Uuid,
+        labels: &std::collections::HashMap<String, String>,
+    ) -> Result<Option<RoutingRule>, anyhow::Error> {
+        let rules = self.list_routing_rules(project_id).await?;
+        Ok(rules.into_iter().find(|rule| {
+            rule.enabled
+                && rule
+                    .match_labels
+                    .as_object()
+                    .map(|required| {
+                        required.iter().all(|(key, value)| {
+                            labels.get(key).map(|v| v.as_str()) == value.as_str()
+                        })
+                    })
+                    .unwrap_or(false)
+        }))
+    }
+
     pub async fn update_test_run(&self, run: &TestRun) -> Result<(), anyhow::Error> {
         if let Some(pool) = &self.pool {
             sqlx::query(
@@ -1165,7 +1553,7 @@ impl Database {
             return Ok(sqlx::query_as::<_, TestRunRow>(
                 r#"
                 select id, project_id, definition_id, suite_id, executor_id, agent_id, status, result, error,
-                       queued_at, started_at, finished_at, created_at, updated_at
+                       queued_at, started_at, finished_at, created_at, updated_at, target_environment_id
                 from test_runs where project_id = $1 order by created_at desc
                 "#,
             )
@@ -1210,7 +1598,7 @@ impl Database {
             return Ok(sqlx::query_as::<_, TestRunRow>(
                 r#"
                 select id, project_id, definition_id, suite_id, executor_id, agent_id, status, result, error,
-                       queued_at, started_at, finished_at, created_at, updated_at
+                       queued_at, started_at, finished_at, created_at, updated_at, target_environment_id
                 from test_runs where id = $1
                 "#,
             )
@@ -1224,6 +1612,12 @@ impl Database {
         Ok(store.runs.iter().find(|r| r.id == id).cloned())
     }
 
+    // A run with no target_environment_id can be claimed by any connected
+    // agent (existing behavior). A run targeted at an environment (issue
+    // #78: routing_rules / #77: agent environment_id) can only be claimed by
+    // an agent assigned to that same environment — an agent in a different
+    // (or no) environment skips it and waits for its next poll rather than
+    // claiming a run meant for somewhere else.
     pub async fn claim_next_run(
         &self,
         project_id: Uuid,
@@ -1235,14 +1629,16 @@ impl Database {
                 update test_runs
                 set agent_id = $2, status = 'running', started_at = now(), updated_at = now()
                 where id = (
-                    select id from test_runs
-                    where project_id = $1 and status = 'queued' and agent_id is null
-                    order by queued_at asc
+                    select tr.id from test_runs tr
+                    left join agents a on a.id = $2
+                    where tr.project_id = $1 and tr.status = 'queued' and tr.agent_id is null
+                      and (tr.target_environment_id is null or tr.target_environment_id = a.environment_id)
+                    order by tr.queued_at asc
                     for update skip locked
                     limit 1
                 )
                 returning id, project_id, definition_id, suite_id, executor_id, agent_id, status, result, error,
-                          queued_at, started_at, finished_at, created_at, updated_at
+                          queued_at, started_at, finished_at, created_at, updated_at, target_environment_id
                 "#,
             )
             .bind(project_id)
@@ -1253,10 +1649,16 @@ impl Database {
         }
 
         let mut store = self.store.lock().unwrap();
+        let agent_environment_id = store.agents.iter().find(|a| a.id == agent_id).and_then(|a| a.environment_id);
         if let Some(run) = store
             .runs
             .iter_mut()
-            .filter(|r| r.project_id == project_id && r.status == "queued" && r.agent_id.is_none())
+            .filter(|r| {
+                r.project_id == project_id
+                    && r.status == "queued"
+                    && r.agent_id.is_none()
+                    && (r.target_environment_id.is_none() || r.target_environment_id == agent_environment_id)
+            })
             .min_by_key(|r| r.queued_at)
         {
             run.agent_id = Some(agent_id);
@@ -1714,7 +2116,7 @@ impl Database {
                     update agents
                     set version = $2, status = $3, last_seen_at = now(), updated_at = now()
                     where id = $1
-                    returning id, project_id, token_id, name, version, status, last_seen_at, created_at, updated_at
+                    returning id, project_id, token_id, name, version, status, last_seen_at, created_at, updated_at, environment_id
                     "#,
                 )
                 .bind(existing_id)
@@ -1728,7 +2130,7 @@ impl Database {
                 r#"
                 insert into agents (project_id, token_id, name, version, status, last_seen_at)
                 values ($1, $2, $3, $4, $5, now())
-                returning id, project_id, token_id, name, version, status, last_seen_at, created_at, updated_at
+                returning id, project_id, token_id, name, version, status, last_seen_at, created_at, updated_at, environment_id
                 "#,
             )
             .bind(token.project_id)
@@ -1763,6 +2165,7 @@ impl Database {
             last_seen_at: Some(now),
             created_at: now,
             updated_at: now,
+            environment_id: None,
         };
         store.agents.push(agent.clone());
         Ok(agent)
@@ -1772,7 +2175,7 @@ impl Database {
         if let Some(pool) = &self.pool {
             return Ok(sqlx::query_as::<_, Agent>(
                 r#"
-                select id, project_id, token_id, name, version, status, last_seen_at, created_at, updated_at
+                select id, project_id, token_id, name, version, status, last_seen_at, created_at, updated_at, environment_id
                 from agents where project_id = $1 order by last_seen_at desc nulls last
                 "#,
             )
@@ -1788,6 +2191,23 @@ impl Database {
             .filter(|a| a.project_id == project_id)
             .cloned()
             .collect())
+    }
+
+    pub async fn get_agent(&self, id: Uuid) -> Result<Option<Agent>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_as::<_, Agent>(
+                r#"
+                select id, project_id, token_id, name, version, status, last_seen_at, created_at, updated_at, environment_id
+                from agents where id = $1
+                "#,
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store.agents.iter().find(|a| a.id == id).cloned())
     }
 
     pub async fn list_plans(&self) -> Result<Vec<Plan>, anyhow::Error> {
@@ -1999,6 +2419,7 @@ pub async fn run_due_schedules_once(db: &Database) -> Result<usize, anyhow::Erro
             finished_at: None,
             created_at: now,
             updated_at: now,
+            target_environment_id: None,
         };
 
         if let Err(error) = db.create_test_run(&run).await {
@@ -2224,6 +2645,7 @@ mod tests {
             finished_at: None,
             created_at: now,
             updated_at: now,
+            target_environment_id: None,
         };
 
         db.create_test_run(&run).await.unwrap();
@@ -2418,6 +2840,7 @@ mod tests {
             finished_at: None,
             created_at: now,
             updated_at: now,
+            target_environment_id: None,
         };
 
         deliver_run_event(&db, db.default_project_id(), "queued", &run).await;
@@ -2469,6 +2892,7 @@ mod tests {
             finished_at: Some(now),
             created_at: now,
             updated_at: now,
+            target_environment_id: None,
         };
 
         deliver_run_event(&db, db.default_project_id(), "failed", &run).await;
@@ -2511,11 +2935,255 @@ mod tests {
             finished_at: None,
             created_at: now,
             updated_at: now,
+            target_environment_id: None,
         };
 
         deliver_run_event(&db, db.default_project_id(), "queued", &run).await;
 
         let deliveries = db.list_webhook_deliveries(webhook.id).await.unwrap();
         assert_eq!(deliveries.len(), 0, "not subscribed to 'queued', must not be called");
+    }
+
+    #[tokio::test]
+    async fn agent_labels_are_visible_via_the_agents_api() {
+        let db = Database::new("test://").await.unwrap();
+        let token = db
+            .create_agent_token(db.default_project_id(), "cluster".to_string())
+            .await
+            .unwrap();
+        let auth = db.authenticate_agent_token(&token.token).await.unwrap().unwrap();
+        let agent = db
+            .check_in_agent(&auth, "agent-1".to_string(), None, "online".to_string())
+            .await
+            .unwrap();
+
+        assert!(db.list_agent_labels(agent.id).await.unwrap().is_empty());
+
+        db.set_agent_label(agent.id, "region", "eu-west").await.unwrap();
+        db.set_agent_label(agent.id, "tier", "prod").await.unwrap();
+
+        let labels = db.list_agent_labels(agent.id).await.unwrap();
+        assert_eq!(labels.len(), 2);
+        assert!(labels.iter().any(|l| l.key == "region" && l.value == "eu-west"));
+
+        // Setting the same key again updates the value instead of duplicating.
+        db.set_agent_label(agent.id, "region", "us-east").await.unwrap();
+        let labels = db.list_agent_labels(agent.id).await.unwrap();
+        assert_eq!(labels.len(), 2, "same key updates in place, does not duplicate");
+        assert!(labels.iter().any(|l| l.key == "region" && l.value == "us-east"));
+
+        let with_labels = db.list_agents_with_labels(db.default_project_id()).await.unwrap();
+        let entry = with_labels.iter().find(|a| a.id == agent.id).unwrap();
+        assert_eq!(entry.labels.len(), 2, "labels visible via the agents API");
+
+        db.delete_agent_label(agent.id, "tier").await.unwrap();
+        assert_eq!(db.list_agent_labels(agent.id).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn agent_environment_assignment() {
+        let db = Database::new("test://").await.unwrap();
+        let token = db
+            .create_agent_token(db.default_project_id(), "cluster".to_string())
+            .await
+            .unwrap();
+        let auth = db.authenticate_agent_token(&token.token).await.unwrap().unwrap();
+        let agent = db
+            .check_in_agent(&auth, "agent-1".to_string(), None, "online".to_string())
+            .await
+            .unwrap();
+        assert_eq!(agent.environment_id, None);
+
+        let now = Utc::now();
+        let env = Environment {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            name: "production".to_string(),
+            slug: "production".to_string(),
+            description: None,
+            color: "#6366f1".to_string(),
+            is_default: false,
+            created_at: now,
+            updated_at: now,
+        };
+        db.create_environment(&env).await.unwrap();
+
+        db.set_agent_environment(agent.id, Some(env.id)).await.unwrap();
+        let with_labels = db.list_agents_with_labels(db.default_project_id()).await.unwrap();
+        let entry = with_labels.iter().find(|a| a.id == agent.id).unwrap();
+        assert_eq!(entry.environment_id, Some(env.id));
+    }
+
+    #[tokio::test]
+    async fn routing_rule_matches_on_all_required_labels() {
+        let db = Database::new("test://").await.unwrap();
+        let now = Utc::now();
+        let rule = RoutingRule {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            name: "eu prod".to_string(),
+            description: None,
+            match_labels: serde_json::json!({ "region": "eu-west", "tier": "prod" }),
+            target_environment_id: None,
+            target_agent_id: None,
+            priority: 0,
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        };
+        db.create_routing_rule(&rule).await.unwrap();
+
+        let mut full_match = std::collections::HashMap::new();
+        full_match.insert("region".to_string(), "eu-west".to_string());
+        full_match.insert("tier".to_string(), "prod".to_string());
+        full_match.insert("extra".to_string(), "ignored".to_string());
+        let matched = db
+            .route_agent_for_labels(db.default_project_id(), &full_match)
+            .await
+            .unwrap();
+        assert!(matched.is_some(), "all required labels present, plus an extra, still matches");
+
+        let mut partial_match = std::collections::HashMap::new();
+        partial_match.insert("region".to_string(), "eu-west".to_string());
+        let not_matched = db
+            .route_agent_for_labels(db.default_project_id(), &partial_match)
+            .await
+            .unwrap();
+        assert!(not_matched.is_none(), "missing a required label must not match");
+
+        let mut wrong_value = std::collections::HashMap::new();
+        wrong_value.insert("region".to_string(), "eu-west".to_string());
+        wrong_value.insert("tier".to_string(), "staging".to_string());
+        let wrong = db
+            .route_agent_for_labels(db.default_project_id(), &wrong_value)
+            .await
+            .unwrap();
+        assert!(wrong.is_none(), "wrong value for a required label must not match");
+    }
+
+    #[tokio::test]
+    async fn disabled_routing_rule_never_matches() {
+        let db = Database::new("test://").await.unwrap();
+        let now = Utc::now();
+        let rule = RoutingRule {
+            id: Uuid::new_v4(),
+            project_id: db.default_project_id(),
+            name: "disabled rule".to_string(),
+            description: None,
+            match_labels: serde_json::json!({ "region": "eu-west" }),
+            target_environment_id: None,
+            target_agent_id: None,
+            priority: 0,
+            enabled: false,
+            created_at: now,
+            updated_at: now,
+        };
+        db.create_routing_rule(&rule).await.unwrap();
+
+        let mut labels = std::collections::HashMap::new();
+        labels.insert("region".to_string(), "eu-west".to_string());
+        let matched = db.route_agent_for_labels(db.default_project_id(), &labels).await.unwrap();
+        assert!(matched.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_targeted_run_only_goes_to_an_agent_in_that_environment() {
+        let db = Database::new("test://").await.unwrap();
+        let project_id = db.default_project_id();
+        let now = Utc::now();
+
+        let prod = Environment {
+            id: Uuid::new_v4(),
+            project_id,
+            name: "production".to_string(),
+            slug: "production".to_string(),
+            description: None,
+            color: "#6366f1".to_string(),
+            is_default: false,
+            created_at: now,
+            updated_at: now,
+        };
+        db.create_environment(&prod).await.unwrap();
+
+        let token = db.create_agent_token(project_id, "cluster".to_string()).await.unwrap();
+        let auth = db.authenticate_agent_token(&token.token).await.unwrap().unwrap();
+        let unassigned_agent = db
+            .check_in_agent(&auth, "agent-unassigned".to_string(), None, "online".to_string())
+            .await
+            .unwrap();
+        let prod_agent = db
+            .check_in_agent(&auth, "agent-prod".to_string(), None, "online".to_string())
+            .await
+            .unwrap();
+        db.set_agent_environment(prod_agent.id, Some(prod.id)).await.unwrap();
+
+        let targeted_run = TestRun {
+            id: Uuid::new_v4(),
+            project_id,
+            definition_id: None,
+            suite_id: None,
+            executor_id: None,
+            agent_id: None,
+            status: "queued".to_string(),
+            result: None,
+            error: None,
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            created_at: now,
+            updated_at: now,
+            target_environment_id: Some(prod.id),
+        };
+        db.create_test_run(&targeted_run).await.unwrap();
+
+        // An agent not in the "production" environment must not claim a run
+        // targeted at it — this is the actual behavior issue #78 asks for
+        // ("routes to a matching agent instead of any agent").
+        let claimed_by_wrong_agent = db.claim_next_run(project_id, unassigned_agent.id).await.unwrap();
+        assert!(
+            claimed_by_wrong_agent.is_none(),
+            "an unassigned agent must not claim a run targeted at production"
+        );
+
+        // The matching agent claims it.
+        let claimed_by_right_agent = db.claim_next_run(project_id, prod_agent.id).await.unwrap();
+        assert!(claimed_by_right_agent.is_some(), "the production agent claims the targeted run");
+        assert_eq!(claimed_by_right_agent.unwrap().agent_id, Some(prod_agent.id));
+    }
+
+    #[tokio::test]
+    async fn an_untargeted_run_goes_to_any_agent() {
+        let db = Database::new("test://").await.unwrap();
+        let project_id = db.default_project_id();
+        let now = Utc::now();
+
+        let token = db.create_agent_token(project_id, "cluster".to_string()).await.unwrap();
+        let auth = db.authenticate_agent_token(&token.token).await.unwrap().unwrap();
+        let agent = db
+            .check_in_agent(&auth, "agent-1".to_string(), None, "online".to_string())
+            .await
+            .unwrap();
+
+        let run = TestRun {
+            id: Uuid::new_v4(),
+            project_id,
+            definition_id: None,
+            suite_id: None,
+            executor_id: None,
+            agent_id: None,
+            status: "queued".to_string(),
+            result: None,
+            error: None,
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            created_at: now,
+            updated_at: now,
+            target_environment_id: None,
+        };
+        db.create_test_run(&run).await.unwrap();
+
+        let claimed = db.claim_next_run(project_id, agent.id).await.unwrap();
+        assert!(claimed.is_some(), "existing untargeted behavior is unchanged");
     }
 }
