@@ -11,6 +11,9 @@ importers:
       concurrently:
         specifier: ^7.6.0
         version: 7.6.0
+      next:
+        specifier: 14.2.16
+        version: 14.2.16(@babel/core@7.28.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       prettier:
         specifier: ^3.6.2
         version: 3.6.2
