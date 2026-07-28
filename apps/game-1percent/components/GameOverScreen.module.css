@@ -1,0 +1,78 @@
+.screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.score {
+  font-size: clamp(1.5rem, 6vw, 2.2rem);
+  font-weight: 700;
+  margin: 0;
+  color: #f2f5ff;
+}
+
+.percentile {
+  font-size: clamp(1.1rem, 4.5vw, 1.4rem);
+  color: #5d8bff;
+  margin: 0;
+}
+
+.best {
+  font-size: 1rem;
+  color: rgba(242, 245, 255, 0.65);
+  margin: 0 0 0.5rem;
+}
+
+.disclaimer {
+  font-size: 0.75rem;
+  color: rgba(242, 245, 255, 0.4);
+  margin: 0 0 1.5rem;
+}
+
+.buttonRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  width: 100%;
+  max-width: 20rem;
+}
+
+.playAgainButton {
+  font-size: clamp(1.2rem, 4.5vw, 1.5rem);
+  font-weight: 700;
+  padding: 1rem 2rem;
+  border-radius: 999px;
+  border: none;
+  background: #5d8bff;
+  color: #08101f;
+  cursor: pointer;
+  box-shadow: 0 0 40px rgba(93, 139, 255, 0.45);
+}
+
+.shareButton {
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 0.85rem 2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(242, 245, 255, 0.3);
+  background: transparent;
+  color: #f2f5ff;
+  cursor: pointer;
+}
+
+.playAgainButton:active,
+.shareButton:active {
+  transform: scale(0.97);
+}
+
+.shareFeedback {
+  font-size: 0.85rem;
+  color: rgba(242, 245, 255, 0.6);
+  min-height: 1.2rem;
+}
