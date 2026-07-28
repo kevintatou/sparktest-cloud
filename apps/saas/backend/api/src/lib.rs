@@ -5,19 +5,18 @@ use axum::{
     routing::{delete, get, patch, post},
     Json, Router,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::Utc;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::Sha256;
 use sparktest_saas_core::{
-    deliver_run_event, schedule_next_run_at, Agent, AgentToken, AgentTokenCreated,
-    AgentWithLabels, Artifact, AuditLog, Database, Environment, Executor, FlakyTest,
-    OrgSubscription, Organization, Plan, Profile, Project, ProjectMember, RetentionPolicy,
-    RoutingRule, SaasTestDefinition, SaasTestRun, Schedule, TestSuite, Webhook, WebhookDelivery,
+    deliver_run_event, schedule_next_run_at, Agent, AgentToken, AgentTokenCreated, AgentWithLabels,
+    Artifact, AuditLog, Database, Environment, Executor, FlakyTest, OrgSubscription, Organization,
+    Plan, Profile, Project, ProjectMember, RetentionPolicy, RoutingRule, SaasTestDefinition,
+    SaasTestRun, Schedule, SupabaseJwtVerifier, TestSuite, Webhook, WebhookDelivery,
 };
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use stripe::{
     CheckoutSession, CheckoutSessionMode, Client, CreateCheckoutSession,
     CreateCheckoutSessionLineItems,
@@ -86,7 +85,6 @@ struct TriggerRunRequest {
     definition_id: Uuid,
 }
 
-
 #[derive(Debug, Serialize)]
 struct QueueResponse {
     run: Option<SaasTestRun>,
@@ -100,10 +98,13 @@ struct HumanContext {
     project_id: Uuid,
 }
 
-#[derive(Debug, Deserialize)]
-struct SupabaseClaims {
-    sub: String,
-    email: Option<String>,
+fn supabase_jwt_verifier() -> &'static SupabaseJwtVerifier {
+    static VERIFIER: OnceLock<SupabaseJwtVerifier> = OnceLock::new();
+    VERIFIER.get_or_init(|| {
+        let supabase_url = std::env::var("SUPABASE_URL")
+            .expect("SUPABASE_URL must be set to verify Supabase auth JWTs");
+        SupabaseJwtVerifier::new(&supabase_url)
+    })
 }
 
 pub fn create_app(database: Database) -> Router {
@@ -161,10 +162,7 @@ pub fn create_app(database: Database) -> Router {
             "/api/ci/schedules/:id",
             patch(update_schedule).delete(delete_schedule),
         )
-        .route(
-            "/api/ci/webhooks",
-            get(list_webhooks).post(create_webhook),
-        )
+        .route("/api/ci/webhooks", get(list_webhooks).post(create_webhook))
         .route(
             "/api/ci/webhooks/:id",
             patch(update_webhook).delete(delete_webhook),
@@ -191,19 +189,13 @@ pub fn create_app(database: Database) -> Router {
             "/api/agents/:id/labels",
             post(set_agent_label).delete(delete_agent_label),
         )
-        .route(
-            "/api/agents/:id/environment",
-            patch(set_agent_environment),
-        )
+        .route("/api/agents/:id/environment", patch(set_agent_environment))
         .route("/api/security/audit", get(list_audit_logs))
         .route(
             "/api/insights/retention",
             get(list_retention_policies).put(upsert_retention_policy),
         )
-        .route(
-            "/api/insights/artifacts",
-            get(list_artifacts),
-        )
+        .route("/api/insights/artifacts", get(list_artifacts))
         .route("/api/insights/artifacts/:id", delete(delete_artifact))
         .route("/api/insights/flaky", get(list_flaky_tests))
         .route("/api/insights/flaky/:id", patch(update_flaky_test_status))
@@ -218,8 +210,8 @@ async fn health_check() -> Json<Value> {
     Json(json!({ "status": "ok", "timestamp": Utc::now() }))
 }
 
-fn human_context(headers: &HeaderMap, db: &Database) -> HumanContext {
-    let jwt_claims = verify_supabase_jwt(headers);
+async fn human_context(headers: &HeaderMap, db: &Database) -> HumanContext {
+    let jwt_claims = verify_supabase_jwt(headers).await;
     let user_id = jwt_claims
         .as_ref()
         .and_then(|claims| Uuid::parse_str(&claims.sub).ok())
@@ -242,27 +234,12 @@ fn human_context(headers: &HeaderMap, db: &Database) -> HumanContext {
     }
 }
 
-fn verify_supabase_jwt(headers: &HeaderMap) -> Option<SupabaseClaims> {
-    let secret = std::env::var("SUPABASE_JWT_SECRET").ok()?;
+// Verifies the JWT's signature against Supabase's published JWKS (see
+// sparktest_saas_core::SupabaseJwtVerifier — Supabase's newer projects sign
+// with an asymmetric key, not a shared secret).
+async fn verify_supabase_jwt(headers: &HeaderMap) -> Option<sparktest_saas_core::SupabaseClaims> {
     let token = bearer_token(headers)?;
-    let mut parts = token.split('.');
-    let header = parts.next()?;
-    let payload = parts.next()?;
-    let signature = parts.next()?;
-    if parts.next().is_some() {
-        return None;
-    }
-
-    let signed = format!("{header}.{payload}");
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).ok()?;
-    mac.update(signed.as_bytes());
-    let expected = URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
-    if expected != signature {
-        return None;
-    }
-
-    let payload = URL_SAFE_NO_PAD.decode(payload).ok()?;
-    serde_json::from_slice(&payload).ok()
+    supabase_jwt_verifier().verify(&token).await
 }
 
 async fn ensure_project_access(db: &Database, ctx: &HumanContext) -> Result<(), StatusCode> {
@@ -294,7 +271,7 @@ async fn upsert_profile(
     headers: HeaderMap,
     Json(request): Json<ProfileRequest>,
 ) -> Result<Json<Profile>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     let user_id = ctx.user_id.unwrap_or_else(Uuid::new_v4);
     let email = ctx.email.unwrap_or(request.email);
     db.ensure_profile(user_id, email, request.name)
@@ -307,7 +284,7 @@ async fn list_projects(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<Project>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     db.list_projects(ctx.user_id)
         .await
         .map(Json)
@@ -319,7 +296,7 @@ async fn create_project(
     headers: HeaderMap,
     Json(request): Json<ProjectRequest>,
 ) -> Result<Json<Project>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     enforce_project_limit(&db).await?;
     let now = Utc::now();
     let project = Project {
@@ -340,7 +317,7 @@ async fn list_project_members(
     headers: HeaderMap,
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<Vec<ProjectMember>>, StatusCode> {
-    let mut ctx = human_context(&headers, &db);
+    let mut ctx = human_context(&headers, &db).await;
     ctx.project_id = project_id;
     ensure_project_access(&db, &ctx).await?;
     db.list_project_members(project_id)
@@ -353,7 +330,7 @@ async fn list_test_definitions(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<SaasTestDefinition>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_test_definitions(Some(ctx.project_id), ctx.user_id)
         .await
@@ -366,7 +343,7 @@ async fn create_test_definition(
     headers: HeaderMap,
     Json(mut definition): Json<SaasTestDefinition>,
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     definition.id = Uuid::new_v4();
     definition.project_id = ctx.project_id;
@@ -383,7 +360,7 @@ async fn get_test_definition(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     match db.get_test_definition(id).await {
         Ok(Some(definition)) if definition.project_id == ctx.project_id => Ok(Json(definition)),
@@ -399,7 +376,7 @@ async fn update_test_definition(
     Path(id): Path<Uuid>,
     Json(mut definition): Json<SaasTestDefinition>,
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     definition.id = id;
     definition.project_id = ctx.project_id;
@@ -415,7 +392,7 @@ async fn delete_test_definition(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.delete_test_definition(id)
         .await
@@ -427,7 +404,7 @@ async fn list_test_runs(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<SaasTestRun>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_test_runs(Some(ctx.project_id), ctx.user_id)
         .await
@@ -440,7 +417,7 @@ async fn create_test_run(
     headers: HeaderMap,
     Json(mut run): Json<SaasTestRun>,
 ) -> Result<Json<SaasTestRun>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     run.id = Uuid::new_v4();
     run.project_id = ctx.project_id;
@@ -478,7 +455,7 @@ async fn get_test_run(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<SaasTestRun>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     match db.get_test_run(id).await {
         Ok(Some(run)) if run.project_id == ctx.project_id => Ok(Json(run)),
@@ -494,7 +471,7 @@ async fn update_test_run(
     Path(id): Path<Uuid>,
     Json(mut run): Json<SaasTestRun>,
 ) -> Result<Json<SaasTestRun>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     run.id = id;
     run.project_id = ctx.project_id;
@@ -509,7 +486,7 @@ async fn list_executors(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<Executor>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_executors(ctx.project_id)
         .await
@@ -522,7 +499,7 @@ async fn create_executor(
     headers: HeaderMap,
     Json(mut executor): Json<Executor>,
 ) -> Result<Json<Executor>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     executor.id = Uuid::new_v4();
     executor.project_id = ctx.project_id;
@@ -539,7 +516,7 @@ async fn get_executor(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Executor>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     match db.get_executor(id).await {
         Ok(Some(executor)) if executor.project_id == ctx.project_id => Ok(Json(executor)),
@@ -555,7 +532,7 @@ async fn update_executor(
     Path(id): Path<Uuid>,
     Json(mut executor): Json<Executor>,
 ) -> Result<Json<Executor>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     executor.id = id;
     executor.project_id = ctx.project_id;
@@ -571,7 +548,7 @@ async fn delete_executor(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.delete_executor(id)
         .await
@@ -583,7 +560,7 @@ async fn list_test_suites(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<TestSuite>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_test_suites(ctx.project_id)
         .await
@@ -596,7 +573,7 @@ async fn create_test_suite(
     headers: HeaderMap,
     Json(mut suite): Json<TestSuite>,
 ) -> Result<Json<TestSuite>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     suite.id = Uuid::new_v4();
     suite.project_id = ctx.project_id;
@@ -613,7 +590,7 @@ async fn get_test_suite(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<TestSuite>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     match db.get_test_suite(id).await {
         Ok(Some(suite)) if suite.project_id == ctx.project_id => Ok(Json(suite)),
@@ -629,7 +606,7 @@ async fn update_test_suite(
     Path(id): Path<Uuid>,
     Json(mut suite): Json<TestSuite>,
 ) -> Result<Json<TestSuite>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     suite.id = id;
     suite.project_id = ctx.project_id;
@@ -645,7 +622,7 @@ async fn delete_test_suite(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.delete_test_suite(id)
         .await
@@ -657,7 +634,7 @@ async fn list_agent_tokens(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<AgentToken>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_agent_tokens(ctx.project_id)
         .await
@@ -670,7 +647,7 @@ async fn create_agent_token(
     headers: HeaderMap,
     Json(request): Json<AgentTokenRequest>,
 ) -> Result<Json<AgentTokenCreated>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     enforce_agent_limit(&db, ctx.project_id).await?;
     let token_name = request.name.clone();
@@ -725,7 +702,7 @@ async fn revoke_agent_token(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     let _ = db
@@ -750,7 +727,7 @@ async fn list_agents(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<Agent>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_agents(ctx.project_id)
         .await
@@ -762,7 +739,7 @@ async fn list_agents_with_labels(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<AgentWithLabels>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_agents_with_labels(ctx.project_id)
         .await
@@ -790,7 +767,7 @@ async fn set_agent_label(
     Path(id): Path<Uuid>,
     Json(request): Json<SetAgentLabelRequest>,
 ) -> Result<Json<Vec<AgentLabelResponse>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_agent(id).await {
@@ -816,7 +793,7 @@ async fn delete_agent_label(
     Path(id): Path<Uuid>,
     Json(request): Json<DeleteAgentLabelRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_agent(id).await {
@@ -843,7 +820,7 @@ async fn set_agent_environment(
     Path(id): Path<Uuid>,
     Json(request): Json<SetAgentEnvironmentRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_agent(id).await {
@@ -867,7 +844,10 @@ struct AgentLabelResponse {
 
 impl From<sparktest_saas_core::AgentLabel> for AgentLabelResponse {
     fn from(label: sparktest_saas_core::AgentLabel) -> Self {
-        Self { key: label.key, value: label.value }
+        Self {
+            key: label.key,
+            value: label.value,
+        }
     }
 }
 
@@ -881,7 +861,7 @@ async fn list_environments(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<Environment>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_environments(ctx.project_id)
         .await
@@ -894,7 +874,7 @@ async fn create_environment(
     headers: HeaderMap,
     Json(request): Json<CreateEnvironmentRequest>,
 ) -> Result<Json<Environment>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     let now = Utc::now();
@@ -921,7 +901,7 @@ async fn delete_environment(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_environment(id).await {
@@ -955,7 +935,7 @@ async fn list_routing_rules(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<RoutingRule>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_routing_rules(ctx.project_id)
         .await
@@ -968,7 +948,7 @@ async fn create_routing_rule(
     headers: HeaderMap,
     Json(request): Json<CreateRoutingRuleRequest>,
 ) -> Result<Json<RoutingRule>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     let now = Utc::now();
@@ -998,7 +978,7 @@ async fn update_routing_rule(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateRoutingRuleRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_routing_rule(id).await {
@@ -1019,7 +999,7 @@ async fn delete_routing_rule(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_routing_rule(id).await {
@@ -1168,7 +1148,7 @@ async fn list_schedules(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<Schedule>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_schedules(ctx.project_id)
         .await
@@ -1181,7 +1161,7 @@ async fn create_schedule(
     headers: HeaderMap,
     Json(request): Json<CreateScheduleRequest>,
 ) -> Result<Json<Schedule>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     if request.definition_id.is_none() && request.suite_id.is_none() {
@@ -1221,7 +1201,7 @@ async fn update_schedule(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateScheduleRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_schedule(id).await {
@@ -1242,7 +1222,7 @@ async fn delete_schedule(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_schedule(id).await {
@@ -1274,7 +1254,7 @@ async fn list_webhooks(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<Webhook>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_webhooks(ctx.project_id)
         .await
@@ -1287,7 +1267,7 @@ async fn create_webhook(
     headers: HeaderMap,
     Json(request): Json<CreateWebhookRequest>,
 ) -> Result<Json<Webhook>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     let now = Utc::now();
@@ -1315,7 +1295,7 @@ async fn update_webhook(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateWebhookRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_webhook(id).await {
@@ -1336,7 +1316,7 @@ async fn delete_webhook(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_webhook(id).await {
@@ -1357,7 +1337,7 @@ async fn list_webhook_deliveries(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<WebhookDelivery>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_webhook(id).await {
@@ -1383,7 +1363,7 @@ async fn list_audit_logs(
     headers: HeaderMap,
     Query(query): Query<AuditLogQuery>,
 ) -> Result<Json<Vec<AuditLog>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_audit_logs(ctx.project_id, query.limit.unwrap_or(100).clamp(1, 500))
         .await
@@ -1401,7 +1381,7 @@ async fn list_retention_policies(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<RetentionPolicy>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_retention_policies(ctx.project_id)
         .await
@@ -1414,15 +1394,19 @@ async fn upsert_retention_policy(
     headers: HeaderMap,
     Json(request): Json<UpsertRetentionPolicyRequest>,
 ) -> Result<Json<RetentionPolicy>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     if request.retention_days < 1 {
         return Err(StatusCode::BAD_REQUEST);
     }
-    db.upsert_retention_policy(ctx.project_id, &request.resource_type, request.retention_days)
-        .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    db.upsert_retention_policy(
+        ctx.project_id,
+        &request.resource_type,
+        request.retention_days,
+    )
+    .await
+    .map(Json)
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 #[derive(Debug, Deserialize)]
@@ -1435,7 +1419,7 @@ async fn list_artifacts(
     headers: HeaderMap,
     Query(query): Query<ArtifactsQuery>,
 ) -> Result<Json<Vec<Artifact>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_artifacts(ctx.project_id, query.limit.unwrap_or(50).clamp(1, 500))
         .await
@@ -1448,7 +1432,7 @@ async fn delete_artifact(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_artifact(id).await {
@@ -1468,7 +1452,7 @@ async fn list_flaky_tests(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<FlakyTest>>, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
     db.list_flaky_tests(ctx.project_id)
         .await
@@ -1487,7 +1471,7 @@ async fn update_flaky_test_status(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateFlakyTestRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    let ctx = human_context(&headers, &db);
+    let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
 
     match db.get_flaky_test(id).await {

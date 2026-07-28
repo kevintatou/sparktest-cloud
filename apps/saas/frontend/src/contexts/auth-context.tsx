@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect, useState, useCallback, ReactNode 
 import { Session, User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
 interface AuthState {
   user: User | null;
   session: Session | null;
@@ -18,6 +20,27 @@ interface AuthContextValue extends AuthState {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+async function syncProfile(session: Session | null) {
+  if (!session?.access_token || !session.user.email) {
+    return;
+  }
+
+  await fetch(`${API_BASE_URL}/api/profile`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      email: session.user.email,
+      name:
+        typeof session.user.user_metadata?.name === 'string'
+          ? session.user.user_metadata.name
+          : undefined,
+    }),
+  });
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -39,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setState({ user: session?.user ?? null, session, loading: false });
+      void syncProfile(session);
     });
 
     // Listen for auth changes
@@ -46,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setState({ user: session?.user ?? null, session, loading: false });
+      void syncProfile(session);
     });
 
     return () => subscription.unsubscribe();

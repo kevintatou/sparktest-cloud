@@ -1133,9 +1133,7 @@ impl Database {
             .webhooks
             .iter()
             .filter(|w| {
-                w.project_id == project_id
-                    && w.enabled
-                    && w.events.iter().any(|e| e == event)
+                w.project_id == project_id && w.enabled && w.events.iter().any(|e| e == event)
             })
             .cloned()
             .collect())
@@ -1274,7 +1272,10 @@ impl Database {
         Ok(())
     }
 
-    pub async fn list_environments(&self, project_id: Uuid) -> Result<Vec<Environment>, anyhow::Error> {
+    pub async fn list_environments(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Vec<Environment>, anyhow::Error> {
         if let Some(pool) = &self.pool {
             return Ok(sqlx::query_as::<_, Environment>(
                 r#"
@@ -1327,7 +1328,10 @@ impl Database {
         Ok(())
     }
 
-    pub async fn list_agent_labels(&self, agent_id: Uuid) -> Result<Vec<AgentLabel>, anyhow::Error> {
+    pub async fn list_agent_labels(
+        &self,
+        agent_id: Uuid,
+    ) -> Result<Vec<AgentLabel>, anyhow::Error> {
         if let Some(pool) = &self.pool {
             return Ok(sqlx::query_as::<_, AgentLabel>(
                 "select id, agent_id, key, value, created_at from agent_labels where agent_id = $1 order by key asc",
@@ -1349,7 +1353,12 @@ impl Database {
     // Upsert-by-(agent_id, key), matching the table's unique constraint —
     // setting a label a caller has already set updates the value instead of
     // erroring or duplicating.
-    pub async fn set_agent_label(&self, agent_id: Uuid, key: &str, value: &str) -> Result<(), anyhow::Error> {
+    pub async fn set_agent_label(
+        &self,
+        agent_id: Uuid,
+        key: &str,
+        value: &str,
+    ) -> Result<(), anyhow::Error> {
         if let Some(pool) = &self.pool {
             sqlx::query(
                 r#"
@@ -1396,7 +1405,9 @@ impl Database {
         }
 
         let mut store = self.store.lock().unwrap();
-        store.agent_labels.retain(|l| !(l.agent_id == agent_id && l.key == key));
+        store
+            .agent_labels
+            .retain(|l| !(l.agent_id == agent_id && l.key == key));
         Ok(())
     }
 
@@ -1424,7 +1435,10 @@ impl Database {
 
     // Joins each project agent with its labels for the /api/routing/agents
     // view (routing-section.tsx's AgentWithLabels).
-    pub async fn list_agents_with_labels(&self, project_id: Uuid) -> Result<Vec<AgentWithLabels>, anyhow::Error> {
+    pub async fn list_agents_with_labels(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Vec<AgentWithLabels>, anyhow::Error> {
         let agents = self.list_agents(project_id).await?;
         let mut result = Vec::with_capacity(agents.len());
         for agent in agents {
@@ -1432,7 +1446,10 @@ impl Database {
                 .list_agent_labels(agent.id)
                 .await?
                 .into_iter()
-                .map(|l| AgentLabelPair { key: l.key, value: l.value })
+                .map(|l| AgentLabelPair {
+                    key: l.key,
+                    value: l.value,
+                })
                 .collect();
             result.push(AgentWithLabels {
                 id: agent.id,
@@ -1475,7 +1492,10 @@ impl Database {
         Ok(())
     }
 
-    pub async fn list_routing_rules(&self, project_id: Uuid) -> Result<Vec<RoutingRule>, anyhow::Error> {
+    pub async fn list_routing_rules(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Vec<RoutingRule>, anyhow::Error> {
         if let Some(pool) = &self.pool {
             return Ok(sqlx::query_as::<_, RoutingRule>(
                 r#"
@@ -1514,7 +1534,11 @@ impl Database {
         Ok(store.routing_rules.iter().find(|r| r.id == id).cloned())
     }
 
-    pub async fn set_routing_rule_enabled(&self, id: Uuid, enabled: bool) -> Result<(), anyhow::Error> {
+    pub async fn set_routing_rule_enabled(
+        &self,
+        id: Uuid,
+        enabled: bool,
+    ) -> Result<(), anyhow::Error> {
         if let Some(pool) = &self.pool {
             sqlx::query("update routing_rules set enabled = $2, updated_at = now() where id = $1")
                 .bind(id)
@@ -1628,7 +1652,11 @@ impl Database {
         Ok(())
     }
 
-    pub async fn list_audit_logs(&self, project_id: Uuid, limit: i64) -> Result<Vec<AuditLog>, anyhow::Error> {
+    pub async fn list_audit_logs(
+        &self,
+        project_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<AuditLog>, anyhow::Error> {
         if let Some(pool) = &self.pool {
             return Ok(sqlx::query_as::<_, AuditLog>(
                 r#"
@@ -1703,7 +1731,10 @@ impl Database {
         Ok(policy)
     }
 
-    pub async fn list_retention_policies(&self, project_id: Uuid) -> Result<Vec<RetentionPolicy>, anyhow::Error> {
+    pub async fn list_retention_policies(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Vec<RetentionPolicy>, anyhow::Error> {
         if let Some(pool) = &self.pool {
             return Ok(sqlx::query_as::<_, RetentionPolicy>(
                 r#"
@@ -1755,7 +1786,11 @@ impl Database {
         Ok(())
     }
 
-    pub async fn list_artifacts(&self, project_id: Uuid, limit: i64) -> Result<Vec<Artifact>, anyhow::Error> {
+    pub async fn list_artifacts(
+        &self,
+        project_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<Artifact>, anyhow::Error> {
         if let Some(pool) = &self.pool {
             return Ok(sqlx::query_as::<_, Artifact>(
                 r#"
@@ -1832,11 +1867,12 @@ impl Database {
         let cutoff = Utc::now() - chrono::Duration::days(retention_days as i64);
 
         if let Some(pool) = &self.pool {
-            let result = sqlx::query("delete from artifacts where project_id = $1 and uploaded_at < $2")
-                .bind(project_id)
-                .bind(cutoff)
-                .execute(pool)
-                .await?;
+            let result =
+                sqlx::query("delete from artifacts where project_id = $1 and uploaded_at < $2")
+                    .bind(project_id)
+                    .bind(cutoff)
+                    .execute(pool)
+                    .await?;
             return Ok(result.rows_affected() as usize);
         }
 
@@ -1848,7 +1884,10 @@ impl Database {
         Ok(before - store.artifacts.len())
     }
 
-    pub async fn list_flaky_tests(&self, project_id: Uuid) -> Result<Vec<FlakyTest>, anyhow::Error> {
+    pub async fn list_flaky_tests(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Vec<FlakyTest>, anyhow::Error> {
         if let Some(pool) = &self.pool {
             return Ok(sqlx::query_as::<_, FlakyTest>(
                 r#"
@@ -1922,10 +1961,20 @@ impl Database {
         recent_statuses: &[&str],
     ) -> Result<FlakyTest, anyhow::Error> {
         let total_runs = recent_statuses.len() as i32;
-        let flaky_runs = recent_statuses.iter().filter(|s| **s == "failed" || **s == "error").count() as i32;
+        let flaky_runs = recent_statuses
+            .iter()
+            .filter(|s| **s == "failed" || **s == "error")
+            .count() as i32;
         let is_flaky = flaky_runs > 0 && flaky_runs < total_runs;
-        let flake_rate = if total_runs > 0 { flaky_runs as f64 / total_runs as f64 * 100.0 } else { 0.0 };
-        let last_failed = recent_statuses.last().map(|s| *s == "failed" || *s == "error").unwrap_or(false);
+        let flake_rate = if total_runs > 0 {
+            flaky_runs as f64 / total_runs as f64 * 100.0
+        } else {
+            0.0
+        };
+        let last_failed = recent_statuses
+            .last()
+            .map(|s| *s == "failed" || *s == "error")
+            .unwrap_or(false);
         let now = Utc::now();
 
         if let Some(pool) = &self.pool {
@@ -1941,10 +1990,27 @@ impl Database {
             .fetch_optional(pool)
             .await?;
 
-            let consecutive_passes = if last_failed { 0 } else { existing.as_ref().map(|e| e.consecutive_passes + 1).unwrap_or(1) };
-            let first_flake_at = existing.as_ref().and_then(|e| e.first_flake_at).or(if is_flaky { Some(now) } else { None });
-            let last_flake_at = if is_flaky { Some(now) } else { existing.as_ref().and_then(|e| e.last_flake_at) };
-            let status = existing.as_ref().map(|e| e.status.clone()).unwrap_or_else(|| "active".to_string());
+            let consecutive_passes = if last_failed {
+                0
+            } else {
+                existing
+                    .as_ref()
+                    .map(|e| e.consecutive_passes + 1)
+                    .unwrap_or(1)
+            };
+            let first_flake_at = existing
+                .as_ref()
+                .and_then(|e| e.first_flake_at)
+                .or(if is_flaky { Some(now) } else { None });
+            let last_flake_at = if is_flaky {
+                Some(now)
+            } else {
+                existing.as_ref().and_then(|e| e.last_flake_at)
+            };
+            let status = existing
+                .as_ref()
+                .map(|e| e.status.clone())
+                .unwrap_or_else(|| "active".to_string());
 
             return Ok(sqlx::query_as::<_, FlakyTest>(
                 r#"
@@ -1978,7 +2044,11 @@ impl Database {
             .iter_mut()
             .find(|f| f.project_id == project_id && f.definition_id == definition_id)
         {
-            existing.consecutive_passes = if last_failed { 0 } else { existing.consecutive_passes + 1 };
+            existing.consecutive_passes = if last_failed {
+                0
+            } else {
+                existing.consecutive_passes + 1
+            };
             existing.flake_rate = flake_rate;
             existing.total_runs = total_runs;
             existing.flaky_runs = flaky_runs;
@@ -2147,7 +2217,11 @@ impl Database {
         }
 
         let mut store = self.store.lock().unwrap();
-        let agent_environment_id = store.agents.iter().find(|a| a.id == agent_id).and_then(|a| a.environment_id);
+        let agent_environment_id = store
+            .agents
+            .iter()
+            .find(|a| a.id == agent_id)
+            .and_then(|a| a.environment_id);
         if let Some(run) = store
             .runs
             .iter_mut()
@@ -2155,7 +2229,8 @@ impl Database {
                 r.project_id == project_id
                     && r.status == "queued"
                     && r.agent_id.is_none()
-                    && (r.target_environment_id.is_none() || r.target_environment_id == agent_environment_id)
+                    && (r.target_environment_id.is_none()
+                        || r.target_environment_id == agent_environment_id)
             })
             .min_by_key(|r| r.queued_at)
         {
@@ -2967,7 +3042,10 @@ pub async fn prune_expired_artifacts_all_projects(db: &Database) -> Result<usize
     Ok(pruned)
 }
 
-pub fn spawn_retention_pruner(db: Database, interval: std::time::Duration) -> tokio::task::JoinHandle<()> {
+pub fn spawn_retention_pruner(
+    db: Database,
+    interval: std::time::Duration,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
         loop {
@@ -3070,6 +3148,70 @@ async fn deliver_one(db: &Database, webhook: &Webhook, event: &str, payload: &Va
 
     if let Err(error) = db.record_webhook_delivery(&delivery).await {
         tracing::error!(%error, webhook_id = %webhook.id, "failed to record webhook delivery");
+    }
+}
+
+// Supabase auth verification. Newer Supabase projects sign session JWTs with
+// an asymmetric key (ES256) and publish the public keys at a JWKS endpoint —
+// there is no shared secret to verify against anymore (the old
+// SUPABASE_JWT_SECRET / HS256 model). Keys are fetched once and cached in
+// memory; a request for an unknown `kid` triggers one refetch (covers key
+// rotation) before failing, so verification doesn't do a network round trip
+// on every request.
+#[derive(Debug, Deserialize)]
+pub struct SupabaseClaims {
+    pub sub: String,
+    pub email: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct SupabaseJwtVerifier {
+    jwks_url: String,
+    cache: Arc<Mutex<Option<jsonwebtoken::jwk::JwkSet>>>,
+}
+
+impl SupabaseJwtVerifier {
+    /// `supabase_url` is the project's base URL, e.g.
+    /// `https://xxxx.supabase.co` (same value as `NEXT_PUBLIC_SUPABASE_URL`).
+    pub fn new(supabase_url: &str) -> Self {
+        let jwks_url = format!(
+            "{}/auth/v1/.well-known/jwks.json",
+            supabase_url.trim_end_matches('/')
+        );
+        Self {
+            jwks_url,
+            cache: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    async fn fetch_jwks(&self) -> Result<jsonwebtoken::jwk::JwkSet, anyhow::Error> {
+        let jwks: jsonwebtoken::jwk::JwkSet = reqwest::get(&self.jwks_url).await?.json().await?;
+        *self.cache.lock().unwrap() = Some(jwks.clone());
+        Ok(jwks)
+    }
+
+    async fn find_key(&self, kid: &str) -> Option<jsonwebtoken::jwk::Jwk> {
+        let cached = self.cache.lock().unwrap().clone();
+        if let Some(jwks) = cached {
+            if let Some(key) = jwks.find(kid) {
+                return Some(key.clone());
+            }
+        }
+        // Unknown kid: the key set may have rotated. Refetch once.
+        let jwks = self.fetch_jwks().await.ok()?;
+        jwks.find(kid).cloned()
+    }
+
+    pub async fn verify(&self, token: &str) -> Option<SupabaseClaims> {
+        let header = jsonwebtoken::decode_header(token).ok()?;
+        let kid = header.kid?;
+        let jwk = self.find_key(&kid).await?;
+        let decoding_key = jsonwebtoken::DecodingKey::from_jwk(&jwk).ok()?;
+        let mut validation = jsonwebtoken::Validation::new(header.alg);
+        validation.validate_aud = false;
+        let data =
+            jsonwebtoken::decode::<SupabaseClaims>(token, &decoding_key, &validation).ok()?;
+        Some(data.claims)
     }
 }
 
@@ -3196,7 +3338,10 @@ mod tests {
         let next = schedule_next_run_at("0 9 * * MON", "UTC", from)
             .unwrap()
             .unwrap();
-        assert_eq!(next.format("%Y-%m-%d %H:%M").to_string(), "2026-07-20 09:00");
+        assert_eq!(
+            next.format("%Y-%m-%d %H:%M").to_string(),
+            "2026-07-20 09:00"
+        );
     }
 
     #[test]
@@ -3253,7 +3398,11 @@ mod tests {
             .list_test_runs(Some(db.default_project_id()), None)
             .await
             .unwrap();
-        assert_eq!(runs.len(), 1, "a queued run was created for the due schedule");
+        assert_eq!(
+            runs.len(),
+            1,
+            "a queued run was created for the due schedule"
+        );
         assert_eq!(runs[0].definition_id, Some(definition.id));
         assert_eq!(runs[0].status, "queued");
 
@@ -3313,7 +3462,9 @@ mod tests {
     // a test-server dependency just for this. Reads one request, ignores its
     // contents beyond confirming a body was sent, replies with the given
     // status line, and returns the request bytes it saw.
-    async fn serve_one_request(status_line: &'static str) -> (String, tokio::task::JoinHandle<Vec<u8>>) {
+    async fn serve_one_request(
+        status_line: &'static str,
+    ) -> (String, tokio::task::JoinHandle<Vec<u8>>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let handle = tokio::spawn(async move {
@@ -3373,7 +3524,9 @@ mod tests {
         let request_text = String::from_utf8_lossy(&received);
         assert!(request_text.contains("POST"), "delivered as a POST");
         assert!(
-            request_text.to_lowercase().contains("x-webhook-signature: v1="),
+            request_text
+                .to_lowercase()
+                .contains("x-webhook-signature: v1="),
             "signature header present: {request_text}"
         );
 
@@ -3465,7 +3618,11 @@ mod tests {
         deliver_run_event(&db, db.default_project_id(), "queued", &run).await;
 
         let deliveries = db.list_webhook_deliveries(webhook.id).await.unwrap();
-        assert_eq!(deliveries.len(), 0, "not subscribed to 'queued', must not be called");
+        assert_eq!(
+            deliveries.len(),
+            0,
+            "not subscribed to 'queued', must not be called"
+        );
     }
 
     #[tokio::test]
@@ -3475,7 +3632,11 @@ mod tests {
             .create_agent_token(db.default_project_id(), "cluster".to_string())
             .await
             .unwrap();
-        let auth = db.authenticate_agent_token(&token.token).await.unwrap().unwrap();
+        let auth = db
+            .authenticate_agent_token(&token.token)
+            .await
+            .unwrap()
+            .unwrap();
         let agent = db
             .check_in_agent(&auth, "agent-1".to_string(), None, "online".to_string())
             .await
@@ -3483,20 +3644,35 @@ mod tests {
 
         assert!(db.list_agent_labels(agent.id).await.unwrap().is_empty());
 
-        db.set_agent_label(agent.id, "region", "eu-west").await.unwrap();
+        db.set_agent_label(agent.id, "region", "eu-west")
+            .await
+            .unwrap();
         db.set_agent_label(agent.id, "tier", "prod").await.unwrap();
 
         let labels = db.list_agent_labels(agent.id).await.unwrap();
         assert_eq!(labels.len(), 2);
-        assert!(labels.iter().any(|l| l.key == "region" && l.value == "eu-west"));
+        assert!(labels
+            .iter()
+            .any(|l| l.key == "region" && l.value == "eu-west"));
 
         // Setting the same key again updates the value instead of duplicating.
-        db.set_agent_label(agent.id, "region", "us-east").await.unwrap();
+        db.set_agent_label(agent.id, "region", "us-east")
+            .await
+            .unwrap();
         let labels = db.list_agent_labels(agent.id).await.unwrap();
-        assert_eq!(labels.len(), 2, "same key updates in place, does not duplicate");
-        assert!(labels.iter().any(|l| l.key == "region" && l.value == "us-east"));
+        assert_eq!(
+            labels.len(),
+            2,
+            "same key updates in place, does not duplicate"
+        );
+        assert!(labels
+            .iter()
+            .any(|l| l.key == "region" && l.value == "us-east"));
 
-        let with_labels = db.list_agents_with_labels(db.default_project_id()).await.unwrap();
+        let with_labels = db
+            .list_agents_with_labels(db.default_project_id())
+            .await
+            .unwrap();
         let entry = with_labels.iter().find(|a| a.id == agent.id).unwrap();
         assert_eq!(entry.labels.len(), 2, "labels visible via the agents API");
 
@@ -3511,7 +3687,11 @@ mod tests {
             .create_agent_token(db.default_project_id(), "cluster".to_string())
             .await
             .unwrap();
-        let auth = db.authenticate_agent_token(&token.token).await.unwrap().unwrap();
+        let auth = db
+            .authenticate_agent_token(&token.token)
+            .await
+            .unwrap()
+            .unwrap();
         let agent = db
             .check_in_agent(&auth, "agent-1".to_string(), None, "online".to_string())
             .await
@@ -3532,8 +3712,13 @@ mod tests {
         };
         db.create_environment(&env).await.unwrap();
 
-        db.set_agent_environment(agent.id, Some(env.id)).await.unwrap();
-        let with_labels = db.list_agents_with_labels(db.default_project_id()).await.unwrap();
+        db.set_agent_environment(agent.id, Some(env.id))
+            .await
+            .unwrap();
+        let with_labels = db
+            .list_agents_with_labels(db.default_project_id())
+            .await
+            .unwrap();
         let entry = with_labels.iter().find(|a| a.id == agent.id).unwrap();
         assert_eq!(entry.environment_id, Some(env.id));
     }
@@ -3565,7 +3750,10 @@ mod tests {
             .route_agent_for_labels(db.default_project_id(), &full_match)
             .await
             .unwrap();
-        assert!(matched.is_some(), "all required labels present, plus an extra, still matches");
+        assert!(
+            matched.is_some(),
+            "all required labels present, plus an extra, still matches"
+        );
 
         let mut partial_match = std::collections::HashMap::new();
         partial_match.insert("region".to_string(), "eu-west".to_string());
@@ -3573,7 +3761,10 @@ mod tests {
             .route_agent_for_labels(db.default_project_id(), &partial_match)
             .await
             .unwrap();
-        assert!(not_matched.is_none(), "missing a required label must not match");
+        assert!(
+            not_matched.is_none(),
+            "missing a required label must not match"
+        );
 
         let mut wrong_value = std::collections::HashMap::new();
         wrong_value.insert("region".to_string(), "eu-west".to_string());
@@ -3582,7 +3773,10 @@ mod tests {
             .route_agent_for_labels(db.default_project_id(), &wrong_value)
             .await
             .unwrap();
-        assert!(wrong.is_none(), "wrong value for a required label must not match");
+        assert!(
+            wrong.is_none(),
+            "wrong value for a required label must not match"
+        );
     }
 
     #[tokio::test]
@@ -3606,7 +3800,10 @@ mod tests {
 
         let mut labels = std::collections::HashMap::new();
         labels.insert("region".to_string(), "eu-west".to_string());
-        let matched = db.route_agent_for_labels(db.default_project_id(), &labels).await.unwrap();
+        let matched = db
+            .route_agent_for_labels(db.default_project_id(), &labels)
+            .await
+            .unwrap();
         assert!(matched.is_none());
     }
 
@@ -3629,17 +3826,31 @@ mod tests {
         };
         db.create_environment(&prod).await.unwrap();
 
-        let token = db.create_agent_token(project_id, "cluster".to_string()).await.unwrap();
-        let auth = db.authenticate_agent_token(&token.token).await.unwrap().unwrap();
+        let token = db
+            .create_agent_token(project_id, "cluster".to_string())
+            .await
+            .unwrap();
+        let auth = db
+            .authenticate_agent_token(&token.token)
+            .await
+            .unwrap()
+            .unwrap();
         let unassigned_agent = db
-            .check_in_agent(&auth, "agent-unassigned".to_string(), None, "online".to_string())
+            .check_in_agent(
+                &auth,
+                "agent-unassigned".to_string(),
+                None,
+                "online".to_string(),
+            )
             .await
             .unwrap();
         let prod_agent = db
             .check_in_agent(&auth, "agent-prod".to_string(), None, "online".to_string())
             .await
             .unwrap();
-        db.set_agent_environment(prod_agent.id, Some(prod.id)).await.unwrap();
+        db.set_agent_environment(prod_agent.id, Some(prod.id))
+            .await
+            .unwrap();
 
         let targeted_run = TestRun {
             id: Uuid::new_v4(),
@@ -3663,7 +3874,10 @@ mod tests {
         // An agent not in the "production" environment must not claim a run
         // targeted at it — this is the actual behavior issue #78 asks for
         // ("routes to a matching agent instead of any agent").
-        let claimed_by_wrong_agent = db.claim_next_run(project_id, unassigned_agent.id).await.unwrap();
+        let claimed_by_wrong_agent = db
+            .claim_next_run(project_id, unassigned_agent.id)
+            .await
+            .unwrap();
         assert!(
             claimed_by_wrong_agent.is_none(),
             "an unassigned agent must not claim a run targeted at production"
@@ -3671,8 +3885,14 @@ mod tests {
 
         // The matching agent claims it.
         let claimed_by_right_agent = db.claim_next_run(project_id, prod_agent.id).await.unwrap();
-        assert!(claimed_by_right_agent.is_some(), "the production agent claims the targeted run");
-        assert_eq!(claimed_by_right_agent.unwrap().agent_id, Some(prod_agent.id));
+        assert!(
+            claimed_by_right_agent.is_some(),
+            "the production agent claims the targeted run"
+        );
+        assert_eq!(
+            claimed_by_right_agent.unwrap().agent_id,
+            Some(prod_agent.id)
+        );
     }
 
     #[tokio::test]
@@ -3681,8 +3901,15 @@ mod tests {
         let project_id = db.default_project_id();
         let now = Utc::now();
 
-        let token = db.create_agent_token(project_id, "cluster".to_string()).await.unwrap();
-        let auth = db.authenticate_agent_token(&token.token).await.unwrap().unwrap();
+        let token = db
+            .create_agent_token(project_id, "cluster".to_string())
+            .await
+            .unwrap();
+        let auth = db
+            .authenticate_agent_token(&token.token)
+            .await
+            .unwrap()
+            .unwrap();
         let agent = db
             .check_in_agent(&auth, "agent-1".to_string(), None, "online".to_string())
             .await
@@ -3708,7 +3935,10 @@ mod tests {
         db.create_test_run(&run).await.unwrap();
 
         let claimed = db.claim_next_run(project_id, agent.id).await.unwrap();
-        assert!(claimed.is_some(), "existing untargeted behavior is unchanged");
+        assert!(
+            claimed.is_some(),
+            "existing untargeted behavior is unchanged"
+        );
     }
 
     #[tokio::test]
@@ -3743,7 +3973,10 @@ mod tests {
 
         let entries = db.list_audit_logs(project_id, 100).await.unwrap();
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].action, "run.created", "most recent action listed first");
+        assert_eq!(
+            entries[0].action, "run.created",
+            "most recent action listed first"
+        );
         assert_eq!(entries[1].action, "agent_token.created");
         assert_eq!(entries[1].resource_id.as_deref(), Some("token-123"));
     }
@@ -3767,9 +4000,17 @@ mod tests {
             .await
             .unwrap();
         }
-        db.record_audit_log(other_project_id, None, None, "run.created", "test_run", None, serde_json::json!({}))
-            .await
-            .unwrap();
+        db.record_audit_log(
+            other_project_id,
+            None,
+            None,
+            "run.created",
+            "test_run",
+            None,
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
 
         let entries = db.list_audit_logs(project_id, 100).await.unwrap();
         assert_eq!(entries.len(), 5, "only this project's entries");
@@ -3783,7 +4024,10 @@ mod tests {
         let db = Database::new("test://").await.unwrap();
         let project_id = db.default_project_id();
 
-        let token = db.create_agent_token(project_id, "cluster".to_string()).await.unwrap();
+        let token = db
+            .create_agent_token(project_id, "cluster".to_string())
+            .await
+            .unwrap();
         db.record_audit_log(
             project_id,
             None,
@@ -3837,7 +4081,9 @@ mod tests {
         let project_id = db.default_project_id();
         let now = Utc::now();
 
-        db.upsert_retention_policy(project_id, "artifacts", 7).await.unwrap();
+        db.upsert_retention_policy(project_id, "artifacts", 7)
+            .await
+            .unwrap();
 
         let old = make_artifact(project_id, now - chrono::Duration::days(10));
         let recent = make_artifact(project_id, now - chrono::Duration::days(1));
@@ -3845,7 +4091,10 @@ mod tests {
         db.create_artifact(&recent).await.unwrap();
 
         let pruned = db.prune_expired_artifacts(project_id).await.unwrap();
-        assert_eq!(pruned, 1, "only the artifact older than the 7-day window is pruned");
+        assert_eq!(
+            pruned, 1,
+            "only the artifact older than the 7-day window is pruned"
+        );
 
         let remaining = db.list_artifacts(project_id, 100).await.unwrap();
         assert_eq!(remaining.len(), 1);
@@ -3874,12 +4123,18 @@ mod tests {
         let project_id = db.default_project_id();
         let now = Utc::now();
 
-        db.upsert_retention_policy(project_id, "artifacts", 7).await.unwrap();
+        db.upsert_retention_policy(project_id, "artifacts", 7)
+            .await
+            .unwrap();
         // Directly flip auto_delete off via the store (no API surface for it
         // yet — the migration's column default is true).
         {
             let mut store = db.store.lock().unwrap();
-            if let Some(policy) = store.retention_policies.iter_mut().find(|p| p.project_id == project_id) {
+            if let Some(policy) = store
+                .retention_policies
+                .iter_mut()
+                .find(|p| p.project_id == project_id)
+            {
                 policy.auto_delete = false;
             }
         }
@@ -3888,7 +4143,10 @@ mod tests {
         db.create_artifact(&old).await.unwrap();
 
         let pruned = db.prune_expired_artifacts(project_id).await.unwrap();
-        assert_eq!(pruned, 0, "auto_delete=false opts the project out of pruning");
+        assert_eq!(
+            pruned, 0,
+            "auto_delete=false opts the project out of pruning"
+        );
     }
 
     #[tokio::test]
@@ -3911,8 +4169,12 @@ mod tests {
             .unwrap();
         let project_b = created.id;
 
-        db.create_artifact(&make_artifact(project_a, now - chrono::Duration::days(60))).await.unwrap();
-        db.create_artifact(&make_artifact(project_b, now - chrono::Duration::days(60))).await.unwrap();
+        db.create_artifact(&make_artifact(project_a, now - chrono::Duration::days(60)))
+            .await
+            .unwrap();
+        db.create_artifact(&make_artifact(project_b, now - chrono::Duration::days(60)))
+            .await
+            .unwrap();
 
         let pruned = prune_expired_artifacts_all_projects(&db).await.unwrap();
         assert_eq!(pruned, 2, "both projects' expired artifacts pruned");
@@ -3925,7 +4187,11 @@ mod tests {
         let definition_id = Uuid::new_v4();
 
         let mixed = db
-            .record_flaky_check(project_id, definition_id, &["passed", "failed", "passed", "passed"])
+            .record_flaky_check(
+                project_id,
+                definition_id,
+                &["passed", "failed", "passed", "passed"],
+            )
             .await
             .unwrap();
         assert_eq!(mixed.flaky_runs, 1);
@@ -3973,7 +4239,10 @@ mod tests {
             .record_flaky_check(project_id, definition_id, &["passed", "passed", "failed"])
             .await
             .unwrap();
-        assert_eq!(after_fail.consecutive_passes, 0, "a failure resets the streak");
+        assert_eq!(
+            after_fail.consecutive_passes, 0,
+            "a failure resets the streak"
+        );
     }
 
     #[tokio::test]
@@ -3989,5 +4258,78 @@ mod tests {
         db.set_flaky_test_status(test.id, "muted").await.unwrap();
         let updated = db.get_flaky_test(test.id).await.unwrap().unwrap();
         assert_eq!(updated.status, "muted");
+    }
+
+    // Fixed P-256 test keypair (not used anywhere real) + a JWT signed with
+    // it, ES256, matching Supabase's real token shape (sub/email/aud/exp).
+    // Proves SupabaseJwtVerifier actually verifies a JWKS-published key, not
+    // just that the code compiles.
+    const TEST_JWK_JSON: &str = r#"{
+        "kty": "EC",
+        "crv": "P-256",
+        "kid": "test-key-1",
+        "use": "sig",
+        "alg": "ES256",
+        "x": "4EaEy8nrJkk6zPfIjXOS9yBWhqmeMOgWsHJRhPf23t4",
+        "y": "4V6F1hT47L7EqZ-C4J4369dWQnvbFZ00lyO67dwXamU"
+    }"#;
+    const TEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2V5LTEifQ.eyJzdWIiOiIxMTExMTExMS0xMTExLTExMTEtMTExMS0xMTExMTExMTExMTEiLCJlbWFpbCI6ImtldmluQGV4YW1wbGUuY29tIiwiYXVkIjoiYXV0aGVudGljYXRlZCIsImV4cCI6NDEwMjQ0NDgwMH0.z2-v-PqznNf88Y-lCVlsWDy5sdSi0eLjhR5B3qmoCTEp1mICr4pTFGEDstHN52MOhuD_n--b4wQ-D7K6YyDTzg";
+
+    async fn serve_jwks_once() -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = socket.read(&mut buf).await;
+            let body = format!(r#"{{"keys":[{}]}}"#, TEST_JWK_JSON);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    #[tokio::test]
+    async fn supabase_jwt_verifier_accepts_a_validly_signed_token() {
+        let (jwks_base_url, handle) = serve_jwks_once().await;
+        // SupabaseJwtVerifier appends /auth/v1/.well-known/jwks.json itself;
+        // point it at a fake "project" whose base path resolves to our
+        // mock server's JWKS route by serving the same response regardless
+        // of path (serve_jwks_once ignores the request path entirely).
+        let verifier = SupabaseJwtVerifier::new(&jwks_base_url);
+
+        let claims = verifier.verify(TEST_JWT).await;
+        handle.await.unwrap();
+
+        let claims = claims.expect("a validly signed token must verify");
+        assert_eq!(claims.sub, "11111111-1111-1111-1111-111111111111");
+        assert_eq!(claims.email.as_deref(), Some("kevin@example.com"));
+    }
+
+    #[tokio::test]
+    async fn supabase_jwt_verifier_rejects_a_tampered_token() {
+        let (jwks_base_url, handle) = serve_jwks_once().await;
+        let verifier = SupabaseJwtVerifier::new(&jwks_base_url);
+
+        let mut tampered = TEST_JWT.to_string();
+        tampered.push('x'); // corrupt the signature
+        let claims = verifier.verify(&tampered).await;
+        handle.await.unwrap();
+
+        assert!(claims.is_none(), "a tampered signature must not verify");
+    }
+
+    #[tokio::test]
+    async fn supabase_jwt_verifier_rejects_garbage_input() {
+        let verifier = SupabaseJwtVerifier::new("http://127.0.0.1:1");
+
+        let claims = verifier.verify("not.a.jwt").await;
+
+        assert!(claims.is_none());
     }
 }
