@@ -21,7 +21,8 @@ services.
 Set these in Render before the first useful deploy:
 
 - `DATABASE_URL`: Supabase Postgres connection string.
-- `SUPABASE_JWT_SECRET`: Supabase Auth JWT secret.
+- `SUPABASE_URL`: Supabase project base URL (e.g. `https://xxxx.supabase.co`),
+  used to fetch the JWKS endpoint and verify Supabase Auth JWT signatures.
 - `RUST_LOG`: `info`
 
 Billing is optional until Stripe checkout is ready:
