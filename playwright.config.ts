@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3000';
+const devPort = process.env.PLAYWRIGHT_DEV_PORT || '3300';
+const baseURL =
+  process.env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${devPort}`;
 const shouldRecordVideo = process.env.E2E_RECORD_VIDEO === '1';
 const isExternalTarget = Boolean(process.env.PLAYWRIGHT_BASE_URL);
 
@@ -34,6 +36,16 @@ export default defineConfig({
     {
       name: 'chromium-desktop',
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'chromium-demo',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 720 },
+        video: shouldRecordVideo
+          ? { mode: 'on', size: { width: 1280, height: 720 } }
+          : 'retain-on-failure',
+      },
     },
     {
       name: 'chromium-mobile',

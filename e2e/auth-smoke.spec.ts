@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { getE2ECredentials, login } from './helpers/auth';
+import { navigateTo } from './helpers/navigation';
 
 const e2eEmail = process.env.E2E_EMAIL;
 const e2ePassword = process.env.E2E_PASSWORD;
@@ -49,27 +51,19 @@ test('invalid login returns an auth error', async ({ page }) => {
 });
 
 test('existing test account reaches dashboard', async ({ page }) => {
-  test.skip(
-    !e2eEmail || !e2ePassword,
-    'Set E2E_EMAIL and E2E_PASSWORD to run login coverage.'
-  );
+  const credentials =
+    e2eEmail && e2ePassword
+      ? { email: e2eEmail, password: e2ePassword }
+      : await getE2ECredentials();
 
-  await page.goto('/');
-
-  await page.getByLabel('Email').fill(e2eEmail!);
-  await page.getByLabel('Password').fill(e2ePassword!);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-
-  await expect(
-    page.getByRole('heading', { name: 'Welcome back' })
-  ).toBeVisible();
+  await login(page, credentials);
   await expect(
     page.getByRole('button', { name: 'Create New Definition' })
   ).toBeVisible();
 
-  await page.getByRole('button', { name: 'Billing & Plans' }).click();
+  await navigateTo(page, 'Billing & Plans');
   await expect(page.getByRole('heading', { name: 'Billing' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await navigateTo(page, 'Settings');
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
 });

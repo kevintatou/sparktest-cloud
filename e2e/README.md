@@ -9,7 +9,7 @@ pnpm e2e
 pnpm e2e:prod
 ```
 
-`pnpm e2e` starts the local frontend and loads root `.env` first.
+`pnpm e2e` starts the local frontend on port 3300 and loads root `.env` first.
 `pnpm e2e:prod` runs against `https://sparktest-cloud-frontend.vercel.app`.
 
 ## Authenticated Checks
@@ -28,3 +28,7 @@ pnpm e2e:record:prod
 
 Videos are saved under `test-results/`. Open `playwright-report/index.html`
 after a run to inspect the test and download the recorded video.
+
+The recording project uses a fixed 1280x720 viewport and deliberately paced
+steps so the video is usable as a product walkthrough instead of a fast smoke
+test capture.

@@ -1,53 +1,71 @@
 import { expect, test } from '@playwright/test';
+import { getE2ECredentials, login } from './helpers/auth';
+import { navigateTo } from './helpers/navigation';
 
-const e2eEmail = process.env.E2E_EMAIL;
-const e2ePassword = process.env.E2E_PASSWORD;
+const stepDelayMs = 900;
+
+async function pause() {
+  await new Promise((resolve) => setTimeout(resolve, stepDelayMs));
+}
 
 test('recordable product walkthrough', async ({ page }) => {
-  await page.goto('/');
+  await page.setViewportSize({ width: 1280, height: 720 });
 
+  const credentials = await getE2ECredentials();
+  await login(page, credentials);
+  await pause();
+
+  await expect(page.getByText('Total Definitions')).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'SparkTest Cloud' })
+    page.getByRole('heading', { name: 'Recent Runs' }).first()
   ).toBeVisible();
+  await pause();
 
-  if (!e2eEmail || !e2ePassword) {
-    await page.getByRole('button', { name: 'Sign up' }).click();
-    await expect(
-      page.getByRole('heading', { name: 'Create an account' })
-    ).toBeVisible();
-    await page.getByLabel('Name').fill('Demo User');
-    await page.getByLabel('Email').fill('demo@example.com');
-    await page.getByLabel('Password').fill('DemoPass123');
-    await expect(page.getByText('At least 8 characters')).toBeVisible();
-    await expect(page.getByText('One uppercase letter')).toBeVisible();
-    await expect(page.getByText('One number')).toBeVisible();
-    return;
-  }
-
-  await page.getByLabel('Email').fill(e2eEmail);
-  await page.getByLabel('Password').fill(e2ePassword);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-
+  await navigateTo(page, 'Definitions');
   await expect(
-    page.getByRole('heading', { name: 'Welcome back' })
+    page.getByRole('heading', { name: 'Definitions', exact: true })
   ).toBeVisible();
+  await pause();
 
-  await page.getByRole('button', { name: 'Definitions' }).click();
+  await page
+    .getByRole('button', { name: /Create.*Definition|Create.*First/i })
+    .first()
+    .click();
   await expect(
-    page.getByRole('heading', { name: 'Definitions' })
+    page.getByRole('heading', { name: 'Create New Definition' })
   ).toBeVisible();
+  await page.getByLabel('Definition Name *').fill('Checkout smoke test');
+  await page.getByLabel('Description').fill('Browser-created demo definition');
+  await page
+    .getByLabel('Test Code *')
+    .fill('console.log("SparkTest demo run");');
+  await pause();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await pause();
 
-  await page.getByRole('button', { name: 'Runs' }).click();
-  await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible();
+  await navigateTo(page, 'Executors');
+  await expect(
+    page.getByRole('heading', { name: 'Executors', exact: true })
+  ).toBeVisible();
+  await pause();
 
-  await page.getByRole('button', { name: 'Agents' }).click();
+  await navigateTo(page, 'Runs');
+  await expect(
+    page.getByRole('heading', { name: 'Runs', exact: true })
+  ).toBeVisible();
+  await pause();
+
+  await navigateTo(page, 'Agents');
   await expect(
     page.getByRole('heading', { name: /Agents|Connect your first agent/i })
   ).toBeVisible();
+  await pause();
 
-  await page.getByRole('button', { name: 'Billing & Plans' }).click();
+  await navigateTo(page, 'Billing & Plans');
   await expect(page.getByRole('heading', { name: 'Billing' })).toBeVisible();
+  await pause();
 
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await navigateTo(page, 'Settings');
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await pause();
 });

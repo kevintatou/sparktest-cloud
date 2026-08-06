@@ -9,6 +9,7 @@ import {
   Plus, Trash2, Network, Tag, Route, Server,
   Loader2, ToggleLeft, ToggleRight, Globe2,
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -48,9 +49,18 @@ interface AgentWithLabels {
 
 // ── API helper ─────────────────────────────────────────────────
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    return { Authorization: `Bearer ${session.access_token}` };
+  }
+  return {};
+}
+
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const authHeaders = await getAuthHeaders();
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { 'Content-Type': 'application/json', ...authHeaders, ...options?.headers },
     ...options,
   });
   if (!response.ok) throw new Error(`API error: ${response.status}`);
