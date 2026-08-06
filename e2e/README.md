@@ -32,3 +32,6 @@ after a run to inspect the test and download the recorded video.
 The recording project uses a fixed 1280x720 viewport and deliberately paced
 steps so the video is usable as a product walkthrough instead of a fast smoke
 test capture.
+
+For the full narration/script, see
+[`docs/product-demo-walkthrough.md`](../docs/product-demo-walkthrough.md).
