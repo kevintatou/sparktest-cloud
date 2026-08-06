@@ -51,6 +51,9 @@ pids
 # Coverage directory used by tools like istanbul
 coverage/
 *.lcov
+playwright-report/
+test-results/
+e2e-recordings/
 
 # Dependency directories
 jspm_packages/
