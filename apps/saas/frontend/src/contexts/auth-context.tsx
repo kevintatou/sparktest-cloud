@@ -21,6 +21,14 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function getAppOrigin() {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  return window.location.origin;
+}
+
 async function syncProfile(session: Session | null) {
   if (!session?.access_token || !session.user.email) {
     return;
@@ -82,11 +90,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, name?: string) => {
+    const appOrigin = getAppOrigin();
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { name: name || email.split('@')[0] },
+        ...(appOrigin ? { emailRedirectTo: appOrigin } : {}),
       },
     });
     return { error };
