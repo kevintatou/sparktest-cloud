@@ -4,7 +4,7 @@ FROM rust:1.90-slim-bookworm AS builder
 
 WORKDIR /workspace
 
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
 COPY apps/agent ./apps/agent
 COPY apps/saas/backend ./apps/saas/backend
 

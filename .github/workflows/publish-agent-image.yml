@@ -7,7 +7,6 @@ on:
       - 'apps/agent/**'
       - 'apps/saas/backend/**'
       - 'Cargo.toml'
-      - 'Cargo.lock'
       - '.dockerignore'
       - '.github/workflows/publish-agent-image.yml'
   workflow_dispatch:
