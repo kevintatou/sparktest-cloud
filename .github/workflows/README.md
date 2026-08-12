@@ -9,6 +9,23 @@ Runs on every push and pull request to main/develop branches:
 - Runs type checking
 - Builds and tests Rust backend
 
+## Publish Agent Image (`publish-agent-image.yml`)
+
+Publishes the SparkTest agent container to GitHub Container Registry:
+
+- Image: `ghcr.io/kevintatou/sparktest-agent`
+- Tags: `latest` on `main`, plus `sha-<commit>`
+- Triggered when agent/backend Rust files or the image workflow change
+
+After the package is public in GHCR, set the frontend environment variable:
+
+```bash
+NEXT_PUBLIC_AGENT_IMAGE=ghcr.io/kevintatou/sparktest-agent:latest
+```
+
+The frontend only shows Docker/Kubernetes install instructions when this image
+variable is configured.
+
 ## Auto-advance Copilot Workflow (`auto-advance-copilot.yml`)
 
 Automatically advances Copilot through epic checklists when PRs are merged:
