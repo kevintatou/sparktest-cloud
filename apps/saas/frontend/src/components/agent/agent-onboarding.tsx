@@ -143,7 +143,7 @@ export const AgentOnboarding: React.FC<AgentOnboardingProps> = ({ onComplete, on
         </div>
         <h2 className="text-2xl font-bold tracking-tight">Connect your first agent</h2>
         <p className="text-muted-foreground max-w-md mx-auto">
-          Agents run in your infrastructure and execute test runs. Set one up in under 2 minutes.
+          Agents run in your infrastructure and execute test runs. Generate a token, start the agent, then verify the connection.
         </p>
       </div>
 
@@ -258,7 +258,7 @@ export const AgentOnboarding: React.FC<AgentOnboardingProps> = ({ onComplete, on
               <div>
                 <h3 className="text-lg font-semibold mb-1">Install and run the agent</h3>
                 <p className="text-sm text-muted-foreground">
-                  Pick your preferred method and run the command. The agent will automatically connect and start polling for test runs.
+                  Run the source-based command for now. Container commands will appear here once a public agent image is published.
                 </p>
               </div>
 

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Check, Copy, Terminal, Box, Ship } from 'lucide-react';
+import { Check, Copy, Terminal, Box, Ship, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type InstallMethod = 'docker' | 'cargo' | 'kubernetes';
@@ -16,40 +16,52 @@ interface InstallInstructionsProps {
 
 export const InstallInstructions: React.FC<InstallInstructionsProps> = ({
   token,
-  apiUrl = 'https://api.sparktest.dev',
+  apiUrl = process.env.NEXT_PUBLIC_API_URL ||
+    'https://sparktest-cloud-api.onrender.com',
   compact = false,
 }) => {
-  const [method, setMethod] = useState<InstallMethod>('docker');
+  const agentImage = process.env.NEXT_PUBLIC_AGENT_IMAGE;
+  const availableMethods: InstallMethod[] = agentImage
+    ? ['cargo', 'docker', 'kubernetes']
+    : ['cargo'];
+  const [method, setMethod] = useState<InstallMethod>('cargo');
   const [copied, setCopied] = useState(false);
-
-  const maskedToken = token
-    ? `${token.slice(0, 8)}...${token.slice(-4)}`
-    : 'YOUR_TOKEN';
 
   const displayToken = token || 'YOUR_TOKEN';
 
-  const instructions: Record<InstallMethod, { label: string; icon: React.ReactNode; command: string; description: string }> = {
+  const instructions: Record<
+    InstallMethod,
+    {
+      label: string;
+      icon: React.ReactNode;
+      command: string;
+      description: string;
+    }
+  > = {
     docker: {
       label: 'Docker',
       icon: <Box className="h-4 w-4" />,
-      description: 'Run the agent as a Docker container. Recommended for most setups.',
+      description:
+        'Run the agent as a Docker container. Recommended for most setups.',
       command: `docker run -d \\
   --name sparktest-agent \\
   -e SPARKTEST_CLOUD_URL=${apiUrl} \\
   -e SPARKTEST_AGENT_TOKEN=${displayToken} \\
-  ghcr.io/kevintatou/sparktest-agent:latest`,
+  ${agentImage || 'YOUR_AGENT_IMAGE'}`,
     },
     cargo: {
-      label: 'Cargo',
+      label: 'Run from source',
       icon: <Terminal className="h-4 w-4" />,
-      description: 'Build and run from source with Rust. Best for development.',
+      description: agentImage
+        ? 'Build and run from source with Rust. Best for development.'
+        : 'Recommended for now. The public Docker image is not published yet.',
       command: `# Clone the repo
 git clone https://github.com/kevintatou/sparktest-cloud.git
 cd sparktest-cloud
 
 # Run the agent
-SPARKTEST_CLOUD_URL=${apiUrl} \\
-SPARKTEST_AGENT_TOKEN=${displayToken} \\
+export SPARKTEST_CLOUD_URL=${apiUrl}
+export SPARKTEST_AGENT_TOKEN=${displayToken}
 cargo run -p sparktest-agent`,
     },
     kubernetes: {
@@ -78,7 +90,7 @@ spec:
     spec:
       containers:
       - name: agent
-        image: ghcr.io/kevintatou/sparktest-agent:latest
+        image: ${agentImage || 'YOUR_AGENT_IMAGE'}
         env:
         - name: SPARKTEST_CLOUD_URL
           value: "${apiUrl}"
@@ -98,10 +110,10 @@ EOF`,
   };
 
   return (
-    <div className={cn("space-y-4", compact && "space-y-3")}>
+    <div className={cn('space-y-4', compact && 'space-y-3')}>
       {/* Method selector */}
       <div className="flex gap-2">
-        {(Object.keys(instructions) as InstallMethod[]).map((key) => (
+        {availableMethods.map((key) => (
           <Button
             key={key}
             variant={method === key ? 'default' : 'outline'}
@@ -116,9 +128,20 @@ EOF`,
       </div>
 
       {!compact && (
-        <p className="text-sm text-muted-foreground">
-          {instructions[method].description}
-        </p>
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            {instructions[method].description}
+          </p>
+          {!agentImage && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                Docker and Kubernetes commands are hidden until a public agent
+                image is published.
+              </span>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Command block */}
