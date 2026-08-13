@@ -214,13 +214,7 @@ async fn human_context(headers: &HeaderMap, db: &Database) -> HumanContext {
     let jwt_claims = verify_supabase_jwt(headers).await;
     let user_id = jwt_claims
         .as_ref()
-        .and_then(|claims| Uuid::parse_str(&claims.sub).ok())
-        .or_else(|| {
-            headers
-                .get("x-user-id")
-                .and_then(|value| value.to_str().ok())
-                .and_then(|value| Uuid::parse_str(value).ok())
-        });
+        .and_then(|claims| Uuid::parse_str(&claims.sub).ok());
     let project_id = headers
         .get("x-project-id")
         .and_then(|value| value.to_str().ok())
@@ -1667,6 +1661,8 @@ async fn handle_subscription_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
 
     #[tokio::test]
     async fn checkout_request_serializes() {
@@ -1687,6 +1683,24 @@ mod tests {
         let plans = db.list_plans().await.unwrap();
         assert_eq!(plans.len(), 2);
         assert!(plans.iter().any(|plan| plan.slug == "free"));
+    }
+
+    #[tokio::test]
+    async fn agent_tokens_require_authenticated_project_access() {
+        let db = Database::new("test://").await.unwrap();
+        let app = create_app(db);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agent-tokens")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
     #[test]

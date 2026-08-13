@@ -690,7 +690,7 @@ impl Database {
     ) -> Result<bool, anyhow::Error> {
         if let Some(pool) = &self.pool {
             let Some(profile_id) = profile_id else {
-                return Ok(project_id == self.default_project_id);
+                return Ok(false);
             };
             let count = sqlx::query_scalar::<_, i64>(
                 "select count(*) from project_members where project_id = $1 and profile_id = $2",
@@ -703,7 +703,7 @@ impl Database {
         }
 
         let Some(profile_id) = profile_id else {
-            return Ok(project_id == self.default_project_id);
+            return Ok(false);
         };
         let store = self.store.lock().unwrap();
         Ok(store
