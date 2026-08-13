@@ -244,6 +244,10 @@ async fn ensure_project_access(db: &Database, ctx: &HumanContext) -> Result<(), 
     }
 }
 
+fn require_user(ctx: &HumanContext) -> Result<Uuid, StatusCode> {
+    ctx.user_id.ok_or(StatusCode::UNAUTHORIZED)
+}
+
 fn bearer_token(headers: &HeaderMap) -> Option<String> {
     headers
         .get("authorization")
@@ -266,7 +270,7 @@ async fn upsert_profile(
     Json(request): Json<ProfileRequest>,
 ) -> Result<Json<Profile>, StatusCode> {
     let ctx = human_context(&headers, &db).await;
-    let user_id = ctx.user_id.unwrap_or_else(Uuid::new_v4);
+    let user_id = require_user(&ctx)?;
     let email = ctx.email.unwrap_or(request.email);
     db.ensure_profile(user_id, email, request.name)
         .await
@@ -279,7 +283,8 @@ async fn list_projects(
     headers: HeaderMap,
 ) -> Result<Json<Vec<Project>>, StatusCode> {
     let ctx = human_context(&headers, &db).await;
-    db.list_projects(ctx.user_id)
+    let user_id = require_user(&ctx)?;
+    db.list_projects(Some(user_id))
         .await
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
@@ -291,6 +296,7 @@ async fn create_project(
     Json(request): Json<ProjectRequest>,
 ) -> Result<Json<Project>, StatusCode> {
     let ctx = human_context(&headers, &db).await;
+    let user_id = require_user(&ctx)?;
     enforce_project_limit(&db).await?;
     let now = Utc::now();
     let project = Project {
@@ -300,7 +306,7 @@ async fn create_project(
         created_at: now,
         updated_at: now,
     };
-    db.create_project(project, ctx.user_id)
+    db.create_project(project, Some(user_id))
         .await
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
@@ -1701,6 +1707,24 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn projects_require_authenticated_user() {
+        let db = Database::new("test://").await.unwrap();
+        let app = create_app(db);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/projects")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[test]
