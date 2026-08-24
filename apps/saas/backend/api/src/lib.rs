@@ -1668,7 +1668,22 @@ async fn handle_subscription_status(
 mod tests {
     use super::*;
     use axum::{body::Body, http::Request};
+    use std::sync::OnceLock;
+    use tokio::sync::Mutex;
     use tower::ServiceExt;
+
+    static PLAN_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn json_request(method: &str, uri: &str, token: Option<&str>, body: Value) -> Request<Body> {
+        let mut builder = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("content-type", "application/json");
+        if let Some(token) = token {
+            builder = builder.header("authorization", format!("Bearer {token}"));
+        }
+        builder.body(Body::from(body.to_string())).unwrap()
+    }
 
     #[tokio::test]
     async fn checkout_request_serializes() {
@@ -1707,6 +1722,233 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn agent_endpoints_reject_missing_or_invalid_tokens() {
+        let db = Database::new("test://").await.unwrap();
+        let app = create_app(db);
+
+        let missing = app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                "/api/agent/check-in",
+                None,
+                json!({ "name": "agent-1" }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::UNAUTHORIZED);
+
+        let invalid = app
+            .oneshot(json_request(
+                "POST",
+                "/api/agent/next-run",
+                Some("not-a-real-token"),
+                json!({ "name": "agent-1" }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(invalid.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn agent_check_in_registers_agent_for_the_token_project() {
+        let db = Database::new("test://").await.unwrap();
+        let project_id = db.default_project_id();
+        let token = db
+            .create_agent_token(project_id, "cluster".to_string())
+            .await
+            .unwrap();
+        let app = create_app(db.clone());
+
+        let response = app
+            .oneshot(json_request(
+                "POST",
+                "/api/agent/check-in",
+                Some(&token.token),
+                json!({
+                    "name": "agent-1",
+                    "version": "0.1.0",
+                    "status": "online"
+                }),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let agents = db.list_agents(project_id).await.unwrap();
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].name, "agent-1");
+        assert_eq!(agents[0].version.as_deref(), Some("0.1.0"));
+        assert_eq!(agents[0].status, "online");
+    }
+
+    #[tokio::test]
+    async fn agent_can_claim_and_complete_a_queued_run_over_http() {
+        let db = Database::new("test://").await.unwrap();
+        let project_id = db.default_project_id();
+        let token = db
+            .create_agent_token(project_id, "cluster".to_string())
+            .await
+            .unwrap();
+        let now = Utc::now();
+        let run = SaasTestRun {
+            id: Uuid::new_v4(),
+            project_id,
+            definition_id: None,
+            suite_id: None,
+            executor_id: None,
+            agent_id: None,
+            status: "queued".to_string(),
+            result: None,
+            error: None,
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            created_at: now,
+            updated_at: now,
+            target_environment_id: None,
+        };
+        db.create_test_run(&run).await.unwrap();
+        let app = create_app(db.clone());
+
+        let claim = app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                "/api/agent/next-run",
+                Some(&token.token),
+                json!({
+                    "name": "agent-1",
+                    "version": "0.1.0"
+                }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(claim.status(), StatusCode::OK);
+
+        let claimed = db.get_test_run(run.id).await.unwrap().unwrap();
+        assert_eq!(claimed.status, "running");
+        assert!(claimed.agent_id.is_some());
+        assert!(claimed.started_at.is_some());
+
+        let completed = app
+            .oneshot(json_request(
+                "POST",
+                &format!("/api/agent/runs/{}/status", run.id),
+                Some(&token.token),
+                json!({
+                    "status": "passed",
+                    "result": { "exit_code": 0 },
+                    "error": null
+                }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(completed.status(), StatusCode::OK);
+
+        let finished = db.get_test_run(run.id).await.unwrap().unwrap();
+        assert_eq!(finished.status, "passed");
+        assert_eq!(finished.result, Some(json!({ "exit_code": 0 })));
+        assert!(finished.finished_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn agent_cannot_update_a_run_from_another_project() {
+        let db = Database::new("test://").await.unwrap();
+        let token = db
+            .create_agent_token(db.default_project_id(), "cluster".to_string())
+            .await
+            .unwrap();
+        let other_project = db
+            .create_project(
+                Project {
+                    id: Uuid::nil(),
+                    name: "Other".to_string(),
+                    slug: String::new(),
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        let now = Utc::now();
+        let run = SaasTestRun {
+            id: Uuid::new_v4(),
+            project_id: other_project.id,
+            definition_id: None,
+            suite_id: None,
+            executor_id: None,
+            agent_id: None,
+            status: "queued".to_string(),
+            result: None,
+            error: None,
+            queued_at: now,
+            started_at: None,
+            finished_at: None,
+            created_at: now,
+            updated_at: now,
+            target_environment_id: None,
+        };
+        db.create_test_run(&run).await.unwrap();
+        let app = create_app(db);
+
+        let response = app
+            .oneshot(json_request(
+                "POST",
+                &format!("/api/agent/runs/{}/status", run.id),
+                Some(&token.token),
+                json!({ "status": "passed", "result": null, "error": null }),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn creating_second_free_agent_token_requires_payment() {
+        let _guard = PLAN_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().await;
+        let previous_plan = std::env::var("SPARKTEST_PLAN").ok();
+        std::env::set_var("SPARKTEST_PLAN", "free");
+
+        let db = Database::new("test://").await.unwrap();
+        let project_id = db.default_project_id();
+        db.create_agent_token(project_id, "first".to_string())
+            .await
+            .unwrap();
+
+        let limit = enforce_agent_limit(&db, project_id).await;
+
+        match previous_plan {
+            Some(plan) => std::env::set_var("SPARKTEST_PLAN", plan),
+            None => std::env::remove_var("SPARKTEST_PLAN"),
+        }
+        assert_eq!(limit, Err(StatusCode::PAYMENT_REQUIRED));
+    }
+
+    #[tokio::test]
+    async fn paid_plan_allows_more_than_one_agent_token() {
+        let _guard = PLAN_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().await;
+        let previous_plan = std::env::var("SPARKTEST_PLAN").ok();
+        std::env::set_var("SPARKTEST_PLAN", "pro");
+
+        let db = Database::new("test://").await.unwrap();
+        let project_id = db.default_project_id();
+        db.create_agent_token(project_id, "first".to_string())
+            .await
+            .unwrap();
+
+        let limit = enforce_agent_limit(&db, project_id).await;
+
+        match previous_plan {
+            Some(plan) => std::env::set_var("SPARKTEST_PLAN", plan),
+            None => std::env::remove_var("SPARKTEST_PLAN"),
+        }
+        assert_eq!(limit, Ok(()));
     }
 
     #[tokio::test]
