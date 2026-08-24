@@ -5,7 +5,7 @@ This repo now has the first SparkTest Cloud control-plane loop: projects, OSS-sh
 ## Before Production
 
 - Apply `supabase/migrations/20260429000100_initial_cloud_schema.sql` to the hosted Supabase project.
-- Set production environment variables: `DATABASE_URL`, `SUPABASE_JWT_SECRET`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, Stripe keys, and `NEXT_PUBLIC_API_URL`.
+- Set production environment variables: `DATABASE_URL`, `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, Stripe keys, and `NEXT_PUBLIC_API_URL`.
 - Add billing persistence migrations for plans, subscriptions, project entitlements, and usage snapshots.
 - Replace the current header/local fallback auth in the frontend with a Supabase login/session UI.
 - Decide the first paid packaging: keep Pro as a low-cost cloud-agent starter, then add Team/Business for serious multi-agent use.

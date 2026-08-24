@@ -11,7 +11,7 @@ services:
         value: info
       - key: DATABASE_URL
         sync: false
-      - key: SUPABASE_JWT_SECRET
+      - key: SUPABASE_URL
         sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
