@@ -6,9 +6,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Key, Trash2, Copy, Check, Shield } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/api-config';
 import { supabase } from '@/lib/supabase';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 type AgentToken = {
   id: string;
@@ -32,14 +31,19 @@ interface TokenManagerProps {
 }
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (session?.access_token) {
     return { Authorization: `Bearer ${session.access_token}` };
   }
   return {};
 }
 
-async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
+async function fetchApi<T>(
+  endpoint: string,
+  options?: RequestInit
+): Promise<T> {
   const authHeaders = await getAuthHeaders();
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: {
@@ -55,10 +59,14 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
   return response.json();
 }
 
-export const TokenManager: React.FC<TokenManagerProps> = ({ onTokenCreated }) => {
+export const TokenManager: React.FC<TokenManagerProps> = ({
+  onTokenCreated,
+}) => {
   const [tokens, setTokens] = useState<AgentToken[]>([]);
   const [tokenName, setTokenName] = useState('');
-  const [createdToken, setCreatedToken] = useState<AgentTokenCreated | null>(null);
+  const [createdToken, setCreatedToken] = useState<AgentTokenCreated | null>(
+    null
+  );
   const [copied, setCopied] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -96,7 +104,7 @@ export const TokenManager: React.FC<TokenManagerProps> = ({ onTokenCreated }) =>
     if (!confirmed) return;
     try {
       await fetchApi(`/api/agent-tokens/${id}`, { method: 'DELETE' });
-      setTokens(prev => prev.filter(t => t.id !== id));
+      setTokens((prev) => prev.filter((t) => t.id !== id));
     } catch (error) {
       console.error('Failed to revoke token:', error);
     }
@@ -109,7 +117,7 @@ export const TokenManager: React.FC<TokenManagerProps> = ({ onTokenCreated }) =>
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const activeTokens = tokens.filter(t => !t.revoked_at);
+  const activeTokens = tokens.filter((t) => !t.revoked_at);
 
   return (
     <div className="space-y-4">
@@ -122,7 +130,11 @@ export const TokenManager: React.FC<TokenManagerProps> = ({ onTokenCreated }) =>
           className="max-w-xs"
           onKeyDown={(e) => e.key === 'Enter' && createToken()}
         />
-        <Button onClick={createToken} disabled={creating} className="gap-2 shrink-0">
+        <Button
+          onClick={createToken}
+          disabled={creating}
+          className="gap-2 shrink-0"
+        >
           <Plus className="h-4 w-4" />
           Create Token
         </Button>
@@ -142,7 +154,12 @@ export const TokenManager: React.FC<TokenManagerProps> = ({ onTokenCreated }) =>
               <code className="flex-1 rounded bg-white dark:bg-zinc-900 px-3 py-2 text-xs font-mono border overflow-x-auto">
                 {createdToken.token}
               </code>
-              <Button variant="outline" size="sm" onClick={copyToken} className="shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyToken}
+                className="shrink-0"
+              >
                 {copied ? (
                   <Check className="h-4 w-4 text-green-600" />
                 ) : (
@@ -157,7 +174,9 @@ export const TokenManager: React.FC<TokenManagerProps> = ({ onTokenCreated }) =>
       {/* Active tokens list */}
       {activeTokens.length > 0 && (
         <div className="space-y-2">
-          <h4 className="text-sm font-medium text-muted-foreground">Active Tokens</h4>
+          <h4 className="text-sm font-medium text-muted-foreground">
+            Active Tokens
+          </h4>
           {activeTokens.map((token) => (
             <div
               key={token.id}
@@ -170,7 +189,11 @@ export const TokenManager: React.FC<TokenManagerProps> = ({ onTokenCreated }) =>
                   <p className="text-xs text-muted-foreground">
                     Created {new Date(token.created_at).toLocaleDateString()}
                     {token.last_used_at && (
-                      <> · Last used {new Date(token.last_used_at).toLocaleDateString()}</>
+                      <>
+                        {' '}
+                        · Last used{' '}
+                        {new Date(token.last_used_at).toLocaleDateString()}
+                      </>
                     )}
                   </p>
                 </div>

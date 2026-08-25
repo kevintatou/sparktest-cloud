@@ -1,10 +1,16 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  ReactNode,
+} from 'react';
 import { Session, User, AuthError } from '@supabase/supabase-js';
+import { API_BASE_URL } from '@/lib/api-config';
 import { supabase } from '@/lib/supabase';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 interface AuthState {
   user: User | null;
@@ -13,8 +19,15 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-  signUp: (email: string, password: string, name?: string) => Promise<{ error: AuthError | null }>;
+  signIn: (
+    email: string,
+    password: string
+  ) => Promise<{ error: AuthError | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    name?: string
+  ) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
 }
@@ -85,22 +98,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
-  }, []);
-
-  const signUp = useCallback(async (email: string, password: string, name?: string) => {
-    const appOrigin = getAppOrigin();
-    const { error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
-      options: {
-        data: { name: name || email.split('@')[0] },
-        ...(appOrigin ? { emailRedirectTo: appOrigin } : {}),
-      },
     });
     return { error };
   }, []);
+
+  const signUp = useCallback(
+    async (email: string, password: string, name?: string) => {
+      const appOrigin = getAppOrigin();
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name: name || email.split('@')[0] },
+          ...(appOrigin ? { emailRedirectTo: appOrigin } : {}),
+        },
+      });
+      return { error };
+    },
+    []
+  );
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -114,7 +133,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, signIn, signUp, signOut, resetPassword }}>
+    <AuthContext.Provider
+      value={{ ...state, signIn, signUp, signOut, resetPassword }}
+    >
       {children}
     </AuthContext.Provider>
   );

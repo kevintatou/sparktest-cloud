@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { Run, Definition } from '@tatou/core';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,43 +17,13 @@ import {
   Timer,
   Terminal,
   Box,
-  FileBox,
-  HardDrive,
-  ShieldCheck,
 } from 'lucide-react';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export interface RunDetailProps {
   run: Run;
   definition?: Definition;
   onBack: () => void;
   onRetry?: (definitionId: string) => void;
-}
-
-interface Artifact {
-  id: string;
-  run_id: string;
-  name: string;
-  path: string;
-  size_bytes: number;
-  content_type: string;
-  storage_key: string;
-  uploaded_at: string;
-  expires_at: string | null;
-}
-
-async function fetchApi<T>(
-  endpoint: string,
-  options?: RequestInit
-): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  });
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
-  if (response.status === 204) return undefined as T;
-  return response.json();
 }
 
 function StatusBadge({ status }: { status: Run['status'] }) {
@@ -130,23 +99,12 @@ function formatDate(iso: string): string {
   });
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
-
 export function RunDetail({
   run,
   definition,
   onBack,
   onRetry,
 }: RunDetailProps) {
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const [artifactsLoading, setArtifactsLoading] = useState(true);
-  const [artifactsError, setArtifactsError] = useState(false);
   const isTerminal = [
     'completed',
     'passed',
@@ -154,34 +112,6 @@ export function RunDetail({
     'error',
     'cancelled',
   ].includes(run.status);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    setArtifactsLoading(true);
-    setArtifactsError(false);
-    fetchApi<Artifact[]>('/api/insights/artifacts?limit=500')
-      .then((items) => {
-        if (!cancelled) {
-          setArtifacts(items.filter((artifact) => artifact.run_id === run.id));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setArtifacts([]);
-          setArtifactsError(true);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setArtifactsLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [run.id]);
 
   return (
     <div className="space-y-6">
@@ -350,95 +280,6 @@ export function RunDetail({
           </CardContent>
         </Card>
       )}
-
-      {/* Artifacts */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center justify-between gap-3">
-            <span className="flex items-center gap-2">
-              <FileBox className="h-4 w-4" />
-              Artifacts
-            </span>
-            {artifacts.length > 0 && (
-              <span className="text-xs font-normal text-muted-foreground">
-                {artifacts.length} files ·{' '}
-                {formatBytes(
-                  artifacts.reduce(
-                    (sum, artifact) => sum + artifact.size_bytes,
-                    0
-                  )
-                )}
-              </span>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {artifactsLoading ? (
-            <div className="flex items-center justify-center py-8 text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" />
-            </div>
-          ) : artifactsError ? (
-            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              Artifacts could not be loaded for this run.
-            </div>
-          ) : artifacts.length > 0 ? (
-            <div className="divide-y rounded-lg border">
-              {artifacts.map((artifact) => (
-                <div
-                  key={artifact.id}
-                  className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-center"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <FileBox className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p
-                        className="truncate text-sm font-medium"
-                        title={artifact.name}
-                      >
-                        {artifact.name}
-                      </p>
-                    </div>
-                    <p
-                      className="mt-1 truncate text-xs text-muted-foreground"
-                      title={artifact.path}
-                    >
-                      {artifact.path}
-                    </p>
-                  </div>
-                  <div className="grid gap-2 text-xs text-muted-foreground sm:min-w-[260px]">
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="flex items-center gap-1.5">
-                        <HardDrive className="h-3.5 w-3.5" />
-                        {formatBytes(artifact.size_bytes)}
-                      </span>
-                      <span className="truncate" title={artifact.content_type}>
-                        {artifact.content_type}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <span>Uploaded {formatDate(artifact.uploaded_at)}</span>
-                      {artifact.expires_at && (
-                        <span className="flex items-center gap-1.5">
-                          <ShieldCheck className="h-3.5 w-3.5" />
-                          Expires {formatDate(artifact.expires_at)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-10">
-              <FileBox className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground">
-                No artifacts attached to this run.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Logs / Output */}
       <Card>

@@ -103,7 +103,8 @@ fn supabase_jwt_verifier() -> &'static SupabaseJwtVerifier {
     VERIFIER.get_or_init(|| {
         let supabase_url = std::env::var("SUPABASE_URL")
             .expect("SUPABASE_URL must be set to verify Supabase auth JWTs");
-        SupabaseJwtVerifier::new(&supabase_url)
+        let jwt_secret = std::env::var("SUPABASE_JWT_SECRET").ok();
+        SupabaseJwtVerifier::with_jwt_secret(&supabase_url, jwt_secret)
     })
 }
 

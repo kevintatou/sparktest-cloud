@@ -3167,6 +3167,7 @@ pub struct SupabaseClaims {
 #[derive(Clone)]
 pub struct SupabaseJwtVerifier {
     jwks_url: String,
+    jwt_secret: Option<String>,
     cache: Arc<Mutex<Option<jsonwebtoken::jwk::JwkSet>>>,
 }
 
@@ -3174,12 +3175,22 @@ impl SupabaseJwtVerifier {
     /// `supabase_url` is the project's base URL, e.g.
     /// `https://xxxx.supabase.co` (same value as `NEXT_PUBLIC_SUPABASE_URL`).
     pub fn new(supabase_url: &str) -> Self {
+        Self::with_jwt_secret(supabase_url, None)
+    }
+
+    pub fn with_jwt_secret(supabase_url: &str, jwt_secret: Option<String>) -> Self {
         let jwks_url = format!(
             "{}/auth/v1/.well-known/jwks.json",
             supabase_url.trim_end_matches('/')
         );
+        let jwt_secret = jwt_secret.filter(|secret| {
+            let trimmed = secret.trim();
+            !trimmed.is_empty() && trimmed != "your-supabase-jwt-secret"
+        });
+
         Self {
             jwks_url,
+            jwt_secret,
             cache: Arc::new(Mutex::new(None)),
         }
     }
@@ -3204,14 +3215,28 @@ impl SupabaseJwtVerifier {
 
     pub async fn verify(&self, token: &str) -> Option<SupabaseClaims> {
         let header = jsonwebtoken::decode_header(token).ok()?;
-        let kid = header.kid?;
-        let jwk = self.find_key(&kid).await?;
-        let decoding_key = jsonwebtoken::DecodingKey::from_jwk(&jwk).ok()?;
-        let mut validation = jsonwebtoken::Validation::new(header.alg);
+
+        if let Some(kid) = header.kid.as_deref() {
+            if let Some(jwk) = self.find_key(kid).await {
+                if let Ok(decoding_key) = jsonwebtoken::DecodingKey::from_jwk(&jwk) {
+                    let mut validation = jsonwebtoken::Validation::new(header.alg);
+                    validation.validate_aud = false;
+                    if let Ok(data) =
+                        jsonwebtoken::decode::<SupabaseClaims>(token, &decoding_key, &validation)
+                    {
+                        return Some(data.claims);
+                    }
+                }
+            }
+        }
+
+        let jwt_secret = self.jwt_secret.as_deref()?;
+        let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
         validation.validate_aud = false;
-        let data =
-            jsonwebtoken::decode::<SupabaseClaims>(token, &decoding_key, &validation).ok()?;
-        Some(data.claims)
+        let decoding_key = jsonwebtoken::DecodingKey::from_secret(jwt_secret.as_bytes());
+        jsonwebtoken::decode::<SupabaseClaims>(token, &decoding_key, &validation)
+            .ok()
+            .map(|data| data.claims)
     }
 }
 
@@ -4331,5 +4356,61 @@ mod tests {
         let claims = verifier.verify("not.a.jwt").await;
 
         assert!(claims.is_none());
+    }
+
+    #[tokio::test]
+    async fn supabase_jwt_verifier_accepts_legacy_hs256_token() {
+        #[derive(Serialize)]
+        struct TestClaims {
+            sub: String,
+            email: String,
+            aud: String,
+            exp: usize,
+        }
+
+        let secret = "legacy-secret";
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+            &TestClaims {
+                sub: "22222222-2222-2222-2222-222222222222".to_string(),
+                email: "legacy@example.com".to_string(),
+                aud: "authenticated".to_string(),
+                exp: 4_102_444_800,
+            },
+            &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .unwrap();
+        let verifier =
+            SupabaseJwtVerifier::with_jwt_secret("http://127.0.0.1:1", Some(secret.to_string()));
+
+        let claims = verifier
+            .verify(&token)
+            .await
+            .expect("legacy HS256 tokens should verify with SUPABASE_JWT_SECRET");
+
+        assert_eq!(claims.sub, "22222222-2222-2222-2222-222222222222");
+        assert_eq!(claims.email.as_deref(), Some("legacy@example.com"));
+    }
+
+    #[tokio::test]
+    async fn supabase_jwt_verifier_rejects_legacy_hs256_without_secret() {
+        #[derive(Serialize)]
+        struct TestClaims {
+            sub: String,
+            exp: usize,
+        }
+
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+            &TestClaims {
+                sub: "33333333-3333-3333-3333-333333333333".to_string(),
+                exp: 4_102_444_800,
+            },
+            &jsonwebtoken::EncodingKey::from_secret(b"legacy-secret"),
+        )
+        .unwrap();
+        let verifier = SupabaseJwtVerifier::new("http://127.0.0.1:1");
+
+        assert!(verifier.verify(&token).await.is_none());
     }
 }
