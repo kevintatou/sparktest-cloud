@@ -8,12 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Key, Trash2, Copy, Check, Shield } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api-config';
 import { supabase } from '@/lib/supabase';
+import { capturePostHog } from '@/lib/posthog';
 
 type AgentToken = {
   id: string;
   project_id: string;
   name: string;
-  token_hash: string;
   last_used_at?: string;
   revoked_at?: string;
   created_at: string;
@@ -69,22 +69,28 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
   );
   const [copied, setCopied] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchApi<AgentToken[]>('/api/agent-tokens')
       .then(setTokens)
-      .catch(console.error);
+      .catch((loadError) => {
+        console.error('Failed to load agent tokens:', loadError);
+        setError('Could not load agent tokens. Please sign in again.');
+      });
   }, []);
 
   const createToken = async () => {
     const name = tokenName.trim() || 'default-agent';
     setCreating(true);
+    setError(null);
     try {
       const token = await fetchApi<AgentTokenCreated>('/api/agent-tokens', {
         method: 'POST',
         body: JSON.stringify({ name }),
       });
       setCreatedToken(token);
+      capturePostHog('agent_token_created');
       setTokenName('');
       onTokenCreated?.(token);
       // Refresh token list
@@ -92,6 +98,11 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
       setTokens(updated);
     } catch (error) {
       console.error('Failed to create token:', error);
+      setError(
+        error instanceof Error && error.message.includes('402')
+          ? 'Your Free plan allows one active agent token. Upgrade to Pro to add another token.'
+          : 'Could not create the token. Please sign in again and retry.'
+      );
     } finally {
       setCreating(false);
     }
@@ -107,6 +118,7 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
       setTokens((prev) => prev.filter((t) => t.id !== id));
     } catch (error) {
       console.error('Failed to revoke token:', error);
+      setError('Could not revoke the token. Please sign in again and retry.');
     }
   };
 
@@ -139,6 +151,15 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
           Create Token
         </Button>
       </div>
+
+      {error && (
+        <p
+          role="alert"
+          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
+          {error}
+        </p>
+      )}
 
       {/* Newly created token banner */}
       {createdToken && (
@@ -200,7 +221,7 @@ export const TokenManager: React.FC<TokenManagerProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-xs">
-                  {token.token_hash.slice(0, 8)}…
+                  {token.id.slice(0, 8)}…
                 </Badge>
                 <Button
                   variant="ghost"

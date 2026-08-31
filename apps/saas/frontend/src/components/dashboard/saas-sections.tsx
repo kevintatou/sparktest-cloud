@@ -2,16 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Radio, Rocket } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Radio } from 'lucide-react';
 import { NavigationKey } from './navigation';
-import { BillingSection } from './billing-section';
-import { AgentOnboarding } from '@/components/agent/agent-onboarding';
 import { AgentStatusCard } from '@/components/agent/agent-status-card';
 import { TokenManager } from '@/components/agent/token-manager';
 import { InstallInstructions } from '@/components/agent/install-instructions';
 import { API_BASE_URL } from '@/lib/api-config';
 import { supabase } from '@/lib/supabase';
+import { capturePostHog } from '@/lib/posthog';
+import { AccountSettings } from '@/components/settings/account-settings';
 
 type Agent = {
   id: string;
@@ -56,42 +56,41 @@ async function fetchApi<T>(
 
 export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab }) => {
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
+  const [trackedOnlineAgents] = useState(() => new Set<string>());
 
   useEffect(() => {
-    if (activeTab === 'agents') {
+    if (activeTab !== 'agents') return;
+
+    let cancelled = false;
+    const loadAgents = () => {
       fetchApi<Agent[]>('/api/agents')
         .then((agentList) => {
+          if (cancelled) return;
           setAgents(agentList);
           setAgentsLoaded(true);
-          // Show onboarding wizard if no agents have ever connected
-          if (agentList.length === 0) {
-            setShowOnboarding(true);
-          }
+          agentList
+            .filter((agent) => agent.status === 'online')
+            .forEach((agent) => {
+              if (!trackedOnlineAgents.has(agent.id)) {
+                trackedOnlineAgents.add(agent.id);
+                capturePostHog('agent_online', { agent_id: agent.id });
+              }
+            });
         })
         .catch(console.error);
-    }
+    };
+
+    loadAgents();
+    const refreshTimer = window.setInterval(loadAgents, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshTimer);
+    };
   }, [activeTab]);
 
   switch (activeTab) {
     case 'agents':
-      // Show the onboarding wizard for first-time users
-      if (showOnboarding) {
-        return (
-          <AgentOnboarding
-            onComplete={() => {
-              setShowOnboarding(false);
-              // Refresh agents list
-              fetchApi<Agent[]>('/api/agents')
-                .then(setAgents)
-                .catch(console.error);
-            }}
-            onSkip={() => setShowOnboarding(false)}
-          />
-        );
-      }
-
       return (
         <div className="space-y-8">
           {/* Header */}
@@ -102,16 +101,18 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab }) => {
                 Agents run in your infrastructure and execute queued test runs.
               </p>
             </div>
-            {agents.length > 0 && (
-              <Button
-                variant="outline"
-                onClick={() => setShowOnboarding(true)}
-                className="gap-2"
-              >
-                <Rocket className="h-4 w-4" />
-                Setup Wizard
-              </Button>
-            )}
+          </div>
+
+          {/* Start here */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold">Start an agent</h3>
+              <p className="text-sm text-muted-foreground">
+                Create a token below, then run this command on the machine that
+                should execute your tests.
+              </p>
+            </div>
+            <InstallInstructions token="" />
           </div>
 
           {/* Connected agents */}
@@ -138,13 +139,6 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab }) => {
                   Create a token and start an agent to begin executing test
                   runs.
                 </p>
-                <Button
-                  onClick={() => setShowOnboarding(true)}
-                  className="gap-2"
-                >
-                  <Rocket className="h-4 w-4" />
-                  Launch Setup Wizard
-                </Button>
               </CardContent>
             </Card>
           )}
@@ -154,82 +148,11 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab }) => {
             <h3 className="text-lg font-semibold">Agent Tokens</h3>
             <TokenManager />
           </div>
-
-          {/* Quick install reference */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Quick Install Reference</h3>
-            <p className="text-sm text-muted-foreground">
-              Use an existing token to start a new agent instance.
-            </p>
-            <InstallInstructions token="" compact />
-          </div>
-        </div>
-      );
-
-    case 'billing':
-      return (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Billing</h2>
-            <p className="text-muted-foreground">
-              Project plan limits are enforced around agents and queued
-              execution.
-            </p>
-          </div>
-          <BillingSection />
         </div>
       );
 
     case 'settings':
-      return (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
-            <p className="text-muted-foreground">
-              Configure project defaults for cloud execution.
-            </p>
-          </div>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>API</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                <p>Base URL: {API_BASE_URL}</p>
-                <p>
-                  Human auth: Supabase JWT headers are expected at the API
-                  boundary.
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Execution</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                <p>
-                  New runs enter the queue and are claimed by connected agents.
-                </p>
-                <p>Kubernetes job execution is owned by the agent process.</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>MVP Surface</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                <p>
-                  Visible product areas are limited to definitions, runs,
-                  agents, billing, and simple settings.
-                </p>
-                <p>
-                  Advanced features are archived until the core loop is shipped.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      );
+      return <AccountSettings />;
 
     default:
       return null;

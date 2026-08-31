@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx::{postgres::PgPoolOptions, types::Json, PgPool};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -156,6 +157,7 @@ pub struct AgentToken {
     pub id: Uuid,
     pub project_id: Uuid,
     pub name: String,
+    #[serde(skip_serializing)]
     pub token_hash: String,
     pub last_used_at: Option<DateTime<Utc>>,
     pub revoked_at: Option<DateTime<Utc>>,
@@ -507,17 +509,40 @@ impl Database {
             .bind(&name)
             .fetch_one(pool)
             .await?;
-            sqlx::query(
-                r#"
-                insert into project_members (project_id, profile_id, role)
-                values ($1, $2, 'owner')
-                on conflict (project_id, profile_id) do nothing
-                "#,
+
+            let project_exists = sqlx::query_scalar::<_, bool>(
+                "select exists(select 1 from project_members where profile_id = $1)",
             )
-            .bind(self.default_project_id)
             .bind(id)
-            .execute(pool)
+            .fetch_one(pool)
             .await?;
+            if !project_exists {
+                let project_name = format!("{}'s Project", name.as_deref().unwrap_or(&email));
+                let project_slug = format!("user-{}", id.simple());
+                let project_id = sqlx::query_scalar::<_, Uuid>(
+                    r#"
+                    insert into projects (name, slug)
+                    values ($1, $2)
+                    on conflict (slug) do update set updated_at = now()
+                    returning id
+                    "#,
+                )
+                .bind(project_name)
+                .bind(project_slug)
+                .fetch_one(pool)
+                .await?;
+                sqlx::query(
+                    r#"
+                    insert into project_members (project_id, profile_id, role)
+                    values ($1, $2, 'owner')
+                    on conflict (project_id, profile_id) do nothing
+                    "#,
+                )
+                .bind(project_id)
+                .bind(id)
+                .execute(pool)
+                .await?;
+            }
             return Ok(profile);
         }
 
@@ -538,19 +563,52 @@ impl Database {
             updated_at: now,
         };
         store.profiles.push(profile.clone());
-        if !store
+        let project_id = Uuid::new_v4();
+        store.projects.push(Project {
+            id: project_id,
+            name: format!(
+                "{}'s Project",
+                profile.name.as_deref().unwrap_or(&profile.email)
+            ),
+            slug: format!("user-{}", id.simple()),
+            created_at: now,
+            updated_at: now,
+        });
+        store.members.push(ProjectMember {
+            project_id,
+            profile_id: id,
+            role: "owner".to_string(),
+            created_at: now,
+        });
+        Ok(profile)
+    }
+
+    pub async fn project_id_for_profile(
+        &self,
+        profile_id: Uuid,
+    ) -> Result<Option<Uuid>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_scalar::<_, Uuid>(
+                r#"
+                select project_id
+                from project_members
+                where profile_id = $1
+                order by created_at desc
+                limit 1
+                "#,
+            )
+            .bind(profile_id)
+            .fetch_optional(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
             .members
             .iter()
-            .any(|m| m.profile_id == id && m.project_id == self.default_project_id)
-        {
-            store.members.push(ProjectMember {
-                project_id: self.default_project_id,
-                profile_id: id,
-                role: "owner".to_string(),
-                created_at: now,
-            });
-        }
-        Ok(profile)
+            .rev()
+            .find(|member| member.profile_id == profile_id)
+            .map(|member| member.project_id))
     }
 
     pub async fn list_projects(
@@ -2198,7 +2256,7 @@ impl Database {
                 set agent_id = $2, status = 'running', started_at = now(), updated_at = now()
                 where id = (
                     select tr.id from test_runs tr
-                    left join agents a on a.id = $2
+                    join agents a on a.id = $2
                     where tr.project_id = $1 and tr.status = 'queued' and tr.agent_id is null
                       and (tr.target_environment_id is null or tr.target_environment_id = a.environment_id)
                     order by tr.queued_at asc
@@ -2618,17 +2676,28 @@ impl Database {
             .count())
     }
 
-    pub async fn revoke_agent_token(&self, id: Uuid) -> Result<(), anyhow::Error> {
+    pub async fn revoke_agent_token(
+        &self,
+        project_id: Uuid,
+        id: Uuid,
+    ) -> Result<(), anyhow::Error> {
         if let Some(pool) = &self.pool {
-            sqlx::query("update agent_tokens set revoked_at = now() where id = $1")
-                .bind(id)
-                .execute(pool)
-                .await?;
+            sqlx::query(
+                "update agent_tokens set revoked_at = now() where id = $1 and project_id = $2",
+            )
+            .bind(id)
+            .bind(project_id)
+            .execute(pool)
+            .await?;
             return Ok(());
         }
 
         let mut store = self.store.lock().unwrap();
-        if let Some(token) = store.agent_tokens.iter_mut().find(|t| t.id == id) {
+        if let Some(token) = store
+            .agent_tokens
+            .iter_mut()
+            .find(|t| t.id == id && t.project_id == project_id)
+        {
             token.revoked_at = Some(Utc::now());
         }
         Ok(())
@@ -2640,15 +2709,17 @@ impl Database {
     ) -> Result<Option<AgentToken>, anyhow::Error> {
         if let Some(pool) = &self.pool {
             let token_hash = hash_token(token);
+            let legacy_token_hash = legacy_hash_token(token);
             let record = sqlx::query_as::<_, AgentToken>(
                 r#"
                 update agent_tokens
                 set last_used_at = now()
-                where token_hash = $1 and revoked_at is null
+                where token_hash in ($1, $2) and revoked_at is null
                 returning id, project_id, name, token_hash, last_used_at, revoked_at, created_at
                 "#,
             )
             .bind(token_hash)
+            .bind(legacy_token_hash)
             .fetch_optional(pool)
             .await?;
             return Ok(record);
@@ -2656,11 +2727,11 @@ impl Database {
 
         let mut store = self.store.lock().unwrap();
         let token_hash = hash_token(token);
-        if let Some(record) = store
-            .agent_tokens
-            .iter_mut()
-            .find(|t| t.token_hash == token_hash && t.revoked_at.is_none())
-        {
+        let legacy_token_hash = legacy_hash_token(token);
+        if let Some(record) = store.agent_tokens.iter_mut().find(|t| {
+            (t.token_hash == token_hash || t.token_hash == legacy_token_hash)
+                && t.revoked_at.is_none()
+        }) {
             record.last_used_at = Some(Utc::now());
             return Ok(Some(record.clone()));
         }
@@ -2887,6 +2958,11 @@ impl Database {
 }
 
 pub fn hash_token(token: &str) -> String {
+    let digest = Sha256::digest(token.as_bytes());
+    hex::encode(digest)
+}
+
+fn legacy_hash_token(token: &str) -> String {
     let mut hasher = DefaultHasher::new();
     token.hash(&mut hasher);
     format!("{:x}", hasher.finish())
@@ -3255,6 +3331,28 @@ mod tests {
         assert_eq!(plans.len(), 2);
         assert!(plans.iter().any(|p| p.slug == "free"));
         assert!(plans.iter().any(|p| p.slug == "pro"));
+    }
+
+    #[tokio::test]
+    async fn profiles_receive_private_projects() {
+        let db = Database::new("test://").await.unwrap();
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+
+        db.ensure_profile(first, "first@example.com".to_string(), None)
+            .await
+            .unwrap();
+        db.ensure_profile(second, "second@example.com".to_string(), None)
+            .await
+            .unwrap();
+
+        let first_project = db.project_id_for_profile(first).await.unwrap();
+        let second_project = db.project_id_for_profile(second).await.unwrap();
+        assert!(first_project.is_some());
+        assert!(second_project.is_some());
+        assert_ne!(first_project, second_project);
+        assert_ne!(first_project, Some(db.default_project_id()));
+        assert_ne!(second_project, Some(db.default_project_id()));
     }
 
     #[tokio::test]
@@ -4065,7 +4163,7 @@ mod tests {
         .await
         .unwrap();
 
-        db.revoke_agent_token(token.id).await.unwrap();
+        db.revoke_agent_token(project_id, token.id).await.unwrap();
         db.record_audit_log(
             project_id,
             None,

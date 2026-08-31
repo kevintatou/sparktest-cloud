@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Definition, Run } from '@tatou/core';
 import { API_BASE_URL } from '@/lib/api-config';
 import { supabase } from '@/lib/supabase';
+import { capturePostHog } from '@/lib/posthog';
 
 const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 
@@ -141,6 +142,7 @@ export function useStorage() {
   const [definitions, setDefinitions] = useState<Definition[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
+  const trackedTerminalRuns = useRef(new Set<string>());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -160,9 +162,48 @@ export function useStorage() {
     }
   }, []);
 
+  const refreshRuns = useCallback(async () => {
+    try {
+      const apiRuns = await fetchApi<ApiRun[]>('/api/test-runs');
+      apiRuns.forEach((run) => {
+        if (
+          !trackedTerminalRuns.current.has(run.id) &&
+          ['passed', 'failed', 'error'].includes(run.status)
+        ) {
+          trackedTerminalRuns.current.add(run.id);
+          capturePostHog(`run_${run.status}`, { run_id: run.id });
+        }
+      });
+      setRuns(apiRuns.map((run) => toRun(run, definitions)));
+    } catch (error) {
+      console.error('Failed to refresh runs:', error);
+    }
+  }, [definitions]);
+
   useEffect(() => {
     loadData();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && event !== 'SIGNED_OUT') {
+        // Supabase may restore the session after the first storage request.
+        // Defer the reload so the auth callback can finish updating storage.
+        window.setTimeout(loadData, 0);
+      }
+    });
+
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) loadData();
+    });
+
+    return () => subscription.unsubscribe();
   }, [loadData]);
+
+  useEffect(() => {
+    const interval = window.setInterval(refreshRuns, 5000);
+    return () => window.clearInterval(interval);
+  }, [refreshRuns]);
 
   const createDefinition = async (
     testData: Omit<Definition, 'id' | 'createdAt'>
@@ -203,6 +244,7 @@ export function useStorage() {
     });
     const run = toRun(created, definitions);
     setRuns((prev) => [run, ...prev]);
+    capturePostHog('run_queued', { definition_id: definitionId });
     return run;
   };
 

@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   FileText,
   Play,
-  CreditCard,
   Radio,
   ChevronRight,
   Settings,
@@ -18,7 +17,6 @@ export type NavigationKey =
   | 'definitions'
   | 'runs'
   | 'agents'
-  | 'billing'
   | 'settings';
 
 export interface NavigationProps {
@@ -40,10 +38,7 @@ const navigationGroups = [
   },
   {
     title: 'Cloud',
-    items: [
-      { key: 'agents', label: 'Agents', icon: Radio },
-      { key: 'billing', label: 'Billing & Plans', icon: CreditCard },
-    ],
+    items: [{ key: 'agents', label: 'Agents', icon: Radio }],
   },
   {
     title: 'Platform',
@@ -83,7 +78,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           {navigationGroups.map((group) => (
             <div key={group.title}>
               {!sidebarCollapsed && (
-                <h3 className="px-1 mb-3 text-xs font-semibold uppercase text-slate-500">
+                <h3 className="px-1 mb-3 text-xs font-semibold uppercase text-muted-foreground">
                   {group.title}
                 </h3>
               )}
@@ -105,7 +100,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                         : 'space-x-3 px-3 py-2.5',
                       activeTab === key
                         ? 'bg-slate-950 text-white shadow-sm shadow-sky-950/10'
-                        : 'text-slate-600 hover:bg-sky-50 hover:text-slate-950'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                     )}
                     title={sidebarCollapsed ? label : undefined}
                   >
@@ -135,10 +130,7 @@ export const Navigation: React.FC<NavigationProps> = ({
       </div>
 
       <div
-        className={cn(
-          'border-t border-sky-100 p-4',
-          sidebarCollapsed && 'px-2'
-        )}
+        className={cn('border-t border-border p-4', sidebarCollapsed && 'px-2')}
       >
         <Button
           variant="ghost"
@@ -151,7 +143,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             }
           }}
           className={cn(
-            'w-full justify-start border border-transparent text-slate-600 hover:border-sky-100 hover:bg-sky-50 hover:text-slate-950',
+            'w-full justify-start border border-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground',
             sidebarCollapsed && 'justify-center px-0'
           )}
           title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}

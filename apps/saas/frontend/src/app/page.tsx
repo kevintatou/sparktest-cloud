@@ -16,6 +16,7 @@ import { SaasSections } from '@/components/dashboard/saas-sections';
 import { AuthGate } from '@/components/auth/auth-gate';
 import { UserMenu } from '@/components/auth/user-menu';
 import { UpdatePasswordForm } from '@/components/auth/update-password-form';
+import { FeatureRequestCard } from '@/components/dashboard/feature-request-card';
 
 export default function Home() {
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
@@ -177,11 +178,11 @@ export default function Home() {
 
   return (
     <AuthGate>
-      <div className="min-h-screen bg-sky-50/40 text-slate-950">
+      <div className="min-h-screen bg-background text-foreground">
         <div className="flex min-h-screen">
           <aside
             className={cn(
-              'fixed inset-y-0 left-0 z-50 border-r border-sky-100 bg-white transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0',
+              'fixed inset-y-0 left-0 z-50 border-r border-border bg-card transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0',
               sidebarOpen ? 'translate-x-0' : '-translate-x-full',
               sidebarCollapsed ? 'w-16' : 'w-64'
             )}
@@ -189,7 +190,7 @@ export default function Home() {
             <div className="flex flex-col h-full">
               <div
                 className={cn(
-                  'flex h-24 items-center border-b border-sky-100 px-6',
+                  'flex h-24 items-center border-b border-border/60 px-6',
                   sidebarCollapsed && 'justify-center px-3'
                 )}
               >
@@ -227,29 +228,30 @@ export default function Home() {
           )}
 
           <main className="flex-1 overflow-y-auto">
-            <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-sky-100 bg-white/90 px-4 backdrop-blur lg:px-8">
+            <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-card/90 px-4 backdrop-blur lg:px-8">
               <div className="flex items-center gap-3">
                 <button
-                  className="rounded-lg border border-slate-200 p-2 text-slate-700 transition-colors hover:bg-slate-100 lg:hidden"
+                  className="rounded-lg border border-border p-2 text-foreground transition-colors hover:bg-accent lg:hidden"
                   onClick={() => setSidebarOpen(!sidebarOpen)}
                   aria-label="Toggle sidebar"
                 >
                   <Menu className="h-5 w-5" />
                 </button>
-                <div className="hidden w-64 items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-slate-500 ring-1 ring-sky-100 sm:flex">
+                <div className="hidden w-64 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm text-muted-foreground ring-1 ring-border sm:flex">
                   <Search className="h-4 w-4" />
                   <span>Search...</span>
                 </div>
               </div>
-              <div className="flex items-center gap-3 text-sm text-slate-600">
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
                 <UserMenu />
                 <ThemeToggle />
               </div>
             </header>
 
             <div className="mx-auto max-w-7xl px-4 py-8 lg:px-8">
-              <div key={activeTab} className="view-transition">
-                {renderTabContent()}
+              <div key={activeTab} className="space-y-8">
+                <div className="view-transition">{renderTabContent()}</div>
+                <FeatureRequestCard />
               </div>
             </div>
           </main>
