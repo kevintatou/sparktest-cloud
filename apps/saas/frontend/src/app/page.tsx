@@ -1,15 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Definition, Executor, Suite } from '@tatou/core';
+import { Definition } from '@tatou/core';
 import { CreateTestDialog } from '@/components/create-test-dialog';
-import { CreateExecutorDialog } from '@/components/create-executor-dialog';
-import { CreateSuiteDialog } from '@/components/create-suite-dialog';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/hooks/use-toast';
 import { useStorage } from '@/hooks/use-storage';
 import { cn } from '@/lib/utils';
-import { Zap, Database, Menu } from 'lucide-react';
+import { Menu, Search, Zap } from 'lucide-react';
 
 import { Navigation, NavigationKey } from '@/components/dashboard/navigation';
 import { Dashboard } from '@/components/dashboard/dashboard';
@@ -18,6 +16,7 @@ import { SaasSections } from '@/components/dashboard/saas-sections';
 import { AuthGate } from '@/components/auth/auth-gate';
 import { UserMenu } from '@/components/auth/user-menu';
 import { UpdatePasswordForm } from '@/components/auth/update-password-form';
+import { FeatureRequestCard } from '@/components/dashboard/feature-request-card';
 
 export default function Home() {
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
@@ -25,35 +24,26 @@ export default function Home() {
       return false;
     }
 
-    return new URLSearchParams(window.location.hash.slice(1)).get('type') === 'recovery';
+    return (
+      new URLSearchParams(window.location.hash.slice(1)).get('type') ===
+      'recovery'
+    );
   });
   const [activeTab, setActiveTab] = useState<NavigationKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false); // Start closed on initial load
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showCreateExecutorDialog, setShowCreateExecutorDialog] = useState(false);
-  const [showCreateSuiteDialog, setShowCreateSuiteDialog] = useState(false);
   const { toast } = useToast();
-  
+
   // Use storage service instead of local state
   const {
     definitions: testDefinitions,
     runs: testRuns,
-    executors,
-    suites: testSuites,
     loading,
     createDefinition,
-    updateDefinition,
-    createExecutor,
-    updateExecutor,
-    createSuite,
-    updateSuite,
     runTest,
-    runSuite,
     deleteDefinition,
     deleteRun,
-    deleteExecutor,
-    deleteSuite,
   } = useStorage();
 
   // Supabase password recovery links can land at /#type=recovery.
@@ -74,7 +64,7 @@ export default function Home() {
 
     // Set initial state
     handleResize();
-    
+
     // Listen for resize events
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -84,51 +74,53 @@ export default function Home() {
     return <UpdatePasswordForm />;
   }
 
-  const handleCreateDefinition = async (testData: Omit<Definition, 'id' | 'createdAt'>) => {
+  const handleCreateDefinition = async (
+    testData: Omit<Definition, 'id' | 'createdAt'>
+  ) => {
     try {
       const newDefinition = await createDefinition(testData);
       toast({
-        title: "Definition Created",
+        title: 'Definition Created',
         description: `"${newDefinition.name}" has been created successfully.`,
       });
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to create definition.",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to create definition.',
+        variant: 'destructive',
       });
     }
   };
 
   const handleRunDefinition = async (definitionId: string) => {
     try {
-      const definition = testDefinitions.find(d => d.id === definitionId);
+      const definition = testDefinitions.find((d) => d.id === definitionId);
       if (!definition) {
         throw new Error('Definition not found');
       }
 
       await runTest(definitionId);
-      
+
       toast({
-        title: "Run Started",
+        title: 'Run Started',
         description: `Running "${definition.name}"...`,
       });
 
       // The storage service will handle status updates via subscriptions
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to start run.",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to start run.',
+        variant: 'destructive',
       });
     }
   };
 
   const handleRunClick = (runId: string) => {
-    const run = testRuns.find(r => r.id === runId);
+    const run = testRuns.find((r) => r.id === runId);
     if (run) {
       toast({
-        title: "Run Details",
+        title: 'Run Details',
         description: `Viewing details for Run ${run.id.slice(-8)} (${run.status})`,
       });
     }
@@ -136,72 +128,18 @@ export default function Home() {
 
   const handleDeleteDefinition = async (id: string) => {
     try {
-      const definition = testDefinitions.find(d => d.id === id);
+      const definition = testDefinitions.find((d) => d.id === id);
       await deleteDefinition(id);
       toast({
-        title: "Definition Deleted",
+        title: 'Definition Deleted',
         description: `"${definition?.name}" has been deleted.`,
-        variant: "destructive",
+        variant: 'destructive',
       });
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to delete definition.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleCreateExecutor = async (executorData: Omit<Executor, 'id' | 'createdAt'>) => {
-    try {
-      const newExecutor = await createExecutor(executorData);
-      toast({
-        title: "Executor Created",
-        description: `"${newExecutor.name}" has been created successfully.`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create executor.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleCreateSuite = async (suiteData: Omit<Suite, 'id' | 'createdAt'>) => {
-    try {
-      const newSuite = await createSuite(suiteData);
-      toast({
-        title: "Suite Created",
-        description: `"${newSuite.name}" has been created successfully.`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create suite.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleRunSuite = async (suiteId: string) => {
-    try {
-      const suite = testSuites.find(s => s.id === suiteId);
-      if (!suite) {
-        throw new Error('Suite not found');
-      }
-
-      await runSuite(suiteId);
-      
-      toast({
-        title: "Suite Started",
-        description: `Running suite "${suite.name}" with ${suite.testDefinitionIds.length} definitions...`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to start suite.",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to delete definition.',
+        variant: 'destructive',
       });
     }
   };
@@ -212,8 +150,6 @@ export default function Home() {
         <Dashboard
           testDefinitions={testDefinitions}
           testRuns={testRuns}
-          executors={executors}
-          testSuites={testSuites}
           loading={loading}
           setShowCreateDialog={setShowCreateDialog}
           handleRunTest={handleRunDefinition}
@@ -222,128 +158,112 @@ export default function Home() {
       );
     }
 
-    if (['definitions', 'runs', 'executors', 'suites'].includes(activeTab)) {
+    if (['definitions', 'runs'].includes(activeTab)) {
       return (
         <TestSections
           activeTab={activeTab}
           testDefinitions={testDefinitions}
           testRuns={testRuns}
-          executors={executors}
-          testSuites={testSuites}
           setShowCreateDialog={setShowCreateDialog}
-          setShowCreateExecutorDialog={setShowCreateExecutorDialog}
-          setShowCreateSuiteDialog={setShowCreateSuiteDialog}
           setActiveTab={setActiveTab}
           handleRunTest={handleRunDefinition}
-          handleRunSuite={handleRunSuite}
           handleDeleteTest={handleDeleteDefinition}
-          handleRunClick={handleRunClick}
           deleteRun={deleteRun}
-          deleteExecutor={deleteExecutor}
-          deleteSuite={deleteSuite}
         />
       );
     }
 
-    return <SaasSections activeTab={activeTab} setActiveTab={setActiveTab} />;
+    return <SaasSections activeTab={activeTab} />;
   };
 
   return (
     <AuthGate>
-    <div className="min-h-screen bg-background">
-      {/* Enhanced Header */}
-      <header className="bg-background border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-              {/* Hamburger Menu Button for Mobile */}
-              <button
-                className="lg:hidden p-2 hover:bg-muted rounded-lg transition-colors"
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                aria-label="Toggle sidebar"
+      <div className="min-h-screen bg-background text-foreground">
+        <div className="flex min-h-screen">
+          <aside
+            className={cn(
+              'fixed inset-y-0 left-0 z-50 border-r border-border bg-card transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0',
+              sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+              sidebarCollapsed ? 'w-16' : 'w-64'
+            )}
+          >
+            <div className="flex flex-col h-full">
+              <div
+                className={cn(
+                  'flex h-24 items-center border-b border-border/60 px-6',
+                  sidebarCollapsed && 'justify-center px-3'
+                )}
               >
-                <Menu className="h-5 w-5" />
-              </button>
-              
-              <div className="relative">
-                <div className="p-2 bg-muted/50 rounded-lg border">
-                  <Zap className="h-6 w-6 text-primary" />
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-sm shadow-sky-500/20">
+                    <Zap className="h-6 w-6" />
+                  </div>
+                  {!sidebarCollapsed && (
+                    <div className="min-w-0">
+                      <h1 className="truncate text-xl font-semibold tracking-tight">
+                        SparkTest
+                      </h1>
+                      <p className="truncate text-xs text-slate-500">
+                        Cloud Testing Platform
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">
-                  SparkTest
-                </h1>
-                <p className="text-xs text-muted-foreground">Cloud Test Platform</p>
+              <Navigation
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                sidebarCollapsed={sidebarCollapsed}
+                setSidebarCollapsed={setSidebarCollapsed}
+                setSidebarOpen={setSidebarOpen}
+              />
+            </div>
+          </aside>
+
+          {sidebarOpen && (
+            <div
+              className="fixed inset-0 bg-black/20 z-40 lg:hidden"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
+
+          <main className="flex-1 overflow-y-auto">
+            <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-card/90 px-4 backdrop-blur lg:px-8">
+              <div className="flex items-center gap-3">
+                <button
+                  className="rounded-lg border border-border p-2 text-foreground transition-colors hover:bg-accent lg:hidden"
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  aria-label="Toggle sidebar"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+                <div className="hidden w-64 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm text-muted-foreground ring-1 ring-border sm:flex">
+                  <Search className="h-4 w-4" />
+                  <span>Search...</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <UserMenu />
+                <ThemeToggle />
+              </div>
+            </header>
+
+            <div className="mx-auto max-w-7xl px-4 py-8 lg:px-8">
+              <div key={activeTab} className="space-y-8">
+                <div className="view-transition">{renderTabContent()}</div>
+                <FeatureRequestCard />
               </div>
             </div>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <UserMenu />
-              <ThemeToggle />
-            </div>
-          </div>
+          </main>
         </div>
-      </header>
 
-      <div className="flex h-[calc(100vh-73px)]">
-        {/* Sidebar with Simple Styling */}
-        <aside className={cn(
-          "fixed inset-y-0 left-0 z-50 bg-background border-r transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full",
-          sidebarCollapsed ? "w-16" : "w-72"
-        )}>
-          <div className="flex flex-col h-full">
-            <Navigation
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              sidebarCollapsed={sidebarCollapsed}
-              setSidebarCollapsed={setSidebarCollapsed}
-              setSidebarOpen={setSidebarOpen}
-            />
-          </div>
-        </aside>
-
-        {/* Mobile overlay */}
-        {sidebarOpen && (
-          <div 
-            className="fixed inset-0 bg-black/20 z-40 lg:hidden" 
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Main Content with Dynamic Margin */}
-        <main className={cn(
-          "flex-1 transition-all duration-300 ease-in-out lg:ml-0 overflow-y-auto",
-          sidebarCollapsed ? "lg:ml-16" : "lg:ml-0"
-        )}>
-          <div className="container mx-auto px-4 py-8 max-w-7xl">
-            {renderTabContent()}
-          </div>
-        </main>
+        {/* Create Definition Dialog */}
+        <CreateTestDialog
+          open={showCreateDialog}
+          onOpenChange={setShowCreateDialog}
+          onCreateTest={handleCreateDefinition}
+        />
       </div>
-
-      {/* Create Definition Dialog */}
-      <CreateTestDialog
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        onCreateTest={handleCreateDefinition}
-      />
-
-      {/* Create Executor Dialog */}
-      <CreateExecutorDialog
-        open={showCreateExecutorDialog}
-        onOpenChange={setShowCreateExecutorDialog}
-        onCreateExecutor={handleCreateExecutor}
-      />
-
-      {/* Create Suite Dialog */}
-      <CreateSuiteDialog
-        open={showCreateSuiteDialog}
-        onOpenChange={setShowCreateSuiteDialog}
-        onCreateSuite={handleCreateSuite}
-        availableDefinitions={testDefinitions}
-      />
-    </div>
     </AuthGate>
   );
 }

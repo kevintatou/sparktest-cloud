@@ -36,6 +36,57 @@ packages/
 
 ## Quick Start
 
+## MVP Beta Flow
+
+SparkTest Cloud is currently free during the beta. The supported flow is:
+
+1. Create an account and confirm the email if Supabase requires it.
+2. Open **Agents**, create an agent token, and copy it immediately.
+3. Clone the public repository on the machine that will run the agent.
+4. Set `SPARKTEST_CLOUD_URL` and `SPARKTEST_AGENT_TOKEN`, then run the agent.
+5. Confirm the agent is online in **Agents**.
+6. Create a definition, run it, and watch the result move from queued to passed or failed.
+
+Each new user receives a private project. Agent tokens are scoped to that project.
+Advanced OSS modules and paid billing are not part of the current beta surface.
+
+### Local MVP Commands
+
+```bash
+pnpm install
+PORT=3001 cargo run -p sparktest-saas-bin
+NEXT_PUBLIC_API_URL=http://localhost:3001 pnpm dev:frontend
+```
+
+The frontend runs at `http://localhost:3000` and the API at `http://localhost:3001`.
+
+### Agent Commands
+
+```bash
+git clone https://github.com/kevintatou/sparktest-cloud.git
+cd sparktest-cloud
+export SPARKTEST_CLOUD_URL=https://your-api-host
+export SPARKTEST_AGENT_TOKEN=stc_your_token
+cargo run -p sparktest-agent
+```
+
+For production, configure `NEXT_PUBLIC_POSTHOG_KEY` and
+`NEXT_PUBLIC_POSTHOG_HOST` to enable beta analytics.
+
+### Legacy Project Audit
+
+Existing installations may contain shared resources in the legacy `default`
+project. The user memberships have been isolated into private projects with:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/isolate-legacy-users.sql
+```
+
+That script is transactional and idempotent. It removes users from the shared
+project but deliberately leaves its definitions and runs untouched because
+those legacy rows do not record ownership. Use `scripts/audit-legacy-project.sql`
+to inspect those preserved rows before assigning them to an owner.
+
 ### Prerequisites
 
 - Node.js 18+

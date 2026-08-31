@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import { API_BASE_URL } from '@/lib/api-config';
 
 export interface Plan {
   id: string;
@@ -21,7 +20,13 @@ export interface Subscription {
   plan_id: string;
   plan_slug: string;
   plan_name: string;
-  status: 'active' | 'past_due' | 'canceled' | 'trialing' | 'incomplete' | 'paused';
+  status:
+    | 'active'
+    | 'past_due'
+    | 'canceled'
+    | 'trialing'
+    | 'incomplete'
+    | 'paused';
   current_period_start: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
@@ -50,7 +55,10 @@ export interface UsageSnapshot {
   seat_count: number;
 }
 
-async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
+async function fetchApi<T>(
+  endpoint: string,
+  options?: RequestInit
+): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
@@ -70,12 +78,19 @@ export function useSubscriptions() {
   const loadBilling = useCallback(async () => {
     try {
       setLoading(true);
-      const [fetchedPlans, fetchedSub, fetchedEntitlements, fetchedUsage] = await Promise.all([
-        fetchApi<Plan[]>('/api/billing/plans'),
-        fetchApi<Subscription | null>('/api/billing/subscription').catch(() => null),
-        fetchApi<Entitlements | null>('/api/billing/entitlements').catch(() => null),
-        fetchApi<UsageSnapshot[]>('/api/billing/usage?days=30').catch(() => []),
-      ]);
+      const [fetchedPlans, fetchedSub, fetchedEntitlements, fetchedUsage] =
+        await Promise.all([
+          fetchApi<Plan[]>('/api/billing/plans'),
+          fetchApi<Subscription | null>('/api/billing/subscription').catch(
+            () => null
+          ),
+          fetchApi<Entitlements | null>('/api/billing/entitlements').catch(
+            () => null
+          ),
+          fetchApi<UsageSnapshot[]>('/api/billing/usage?days=30').catch(
+            () => []
+          ),
+        ]);
       setPlans(fetchedPlans);
       setSubscription(fetchedSub);
       setEntitlements(fetchedEntitlements);
@@ -89,25 +104,33 @@ export function useSubscriptions() {
     }
   }, []);
 
-  useEffect(() => { loadBilling(); }, [loadBilling]);
+  useEffect(() => {
+    loadBilling();
+  }, [loadBilling]);
 
   const createCheckoutSession = async (planSlug: string) => {
     const currentUrl = window.location.origin;
-    const response = await fetchApi<{ checkout_url: string }>('/api/billing/checkout', {
-      method: 'POST',
-      body: JSON.stringify({
-        plan_slug: planSlug,
-        success_url: `${currentUrl}?success=true`,
-        cancel_url: `${currentUrl}?canceled=true`,
-      }),
-    });
+    const response = await fetchApi<{ checkout_url: string }>(
+      '/api/billing/checkout',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          plan_slug: planSlug,
+          success_url: `${currentUrl}?success=true`,
+          cancel_url: `${currentUrl}?canceled=true`,
+        }),
+      }
+    );
     window.location.href = response.checkout_url;
   };
 
   const openPortal = async () => {
-    const response = await fetchApi<{ portal_url: string }>('/api/billing/portal', {
-      method: 'POST',
-    });
+    const response = await fetchApi<{ portal_url: string }>(
+      '/api/billing/portal',
+      {
+        method: 'POST',
+      }
+    );
     window.location.href = response.portal_url;
   };
 

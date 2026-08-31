@@ -11,7 +11,7 @@
     "build:saas-frontend": "pnpm --filter '@tatou/sparktest-saas-frontend' build",
     "dev": "pnpm --filter '@tatou/sparktest-saas-frontend' dev",
     "dev:frontend": "pnpm --filter '@tatou/sparktest-saas-frontend' dev",
-    "dev:backend": "cargo run -p sparktest-saas-bin --manifest-path apps/saas/backend/bin/Cargo.toml",
+    "dev:backend": "PORT=3001 cargo run -p sparktest-saas-bin --manifest-path apps/saas/backend/bin/Cargo.toml",
     "dev:all": "concurrently -k -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
     "e2e": "playwright test",
     "e2e:headed": "playwright test --headed",

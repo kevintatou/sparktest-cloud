@@ -26,26 +26,26 @@
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
   }
-  
+
   .dark {
-    --background: 222.2 84% 4.9%;
+    --background: 222 36% 11%;
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --card: 222 32% 16%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 222 32% 16%;
     --popover-foreground: 210 40% 98%;
     --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+    --primary-foreground: 222 36% 11%;
+    --secondary: 217 25% 24%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
+    --muted: 217 25% 24%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --accent: 217 25% 24%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
+    --border: 217 20% 29%;
+    --input: 217 20% 29%;
     --ring: 217.2 91.2% 59.8%;
   }
 }
@@ -56,7 +56,9 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings:
+      'rlig' 1,
+      'calt' 1;
   }
 }
 
@@ -64,5 +66,26 @@
   /* Subtle refined card styling */
   .card-refined {
     @apply bg-card rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md;
+  }
+
+  .view-transition {
+    animation: view-enter 180ms ease-out both;
+  }
+}
+
+@keyframes view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-transition {
+    animation: none;
   }
 }

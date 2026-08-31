@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Definition, Executor, Run, Suite } from '@tatou/core';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Definition, Run } from '@tatou/core';
+import { API_BASE_URL } from '@/lib/api-config';
 import { supabase } from '@/lib/supabase';
+import { capturePostHog } from '@/lib/posthog';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 
 type ApiDefinition = {
@@ -37,38 +38,20 @@ type ApiRun = {
   updated_at: string;
 };
 
-type ApiExecutor = {
-  id: string;
-  project_id: string;
-  name: string;
-  executor_type: string;
-  image?: string | null;
-  config: Record<string, unknown>;
-  status: string;
-  created_at: string;
-  updated_at: string;
-};
-
-type ApiSuite = {
-  id: string;
-  project_id: string;
-  name: string;
-  description?: string;
-  test_definition_ids: string[];
-  execution_mode: 'sequential' | 'parallel';
-  created_at: string;
-  updated_at: string;
-};
-
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (session?.access_token) {
     return { Authorization: `Bearer ${session.access_token}` };
   }
   return {};
 }
 
-async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
+async function fetchApi<T>(
+  endpoint: string,
+  options?: RequestInit
+): Promise<T> {
   const authHeaders = await getAuthHeaders();
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: {
@@ -105,7 +88,9 @@ function toDefinition(definition: ApiDefinition): Definition {
   };
 }
 
-function fromDefinition(definition: Omit<Definition, 'id' | 'createdAt'>): ApiDefinition {
+function fromDefinition(
+  definition: Omit<Definition, 'id' | 'createdAt'>
+): ApiDefinition {
   return {
     id: NIL_UUID,
     project_id: NIL_UUID,
@@ -121,7 +106,7 @@ function fromDefinition(definition: Omit<Definition, 'id' | 'createdAt'>): ApiDe
 }
 
 function toRun(run: ApiRun, definitions: Definition[]): Run {
-  const definition = definitions.find(item => item.id === run.definition_id);
+  const definition = definitions.find((item) => item.id === run.definition_id);
   return {
     id: run.id,
     name: definition ? `Run ${definition.name}` : `Run ${run.id.slice(-8)}`,
@@ -153,76 +138,23 @@ function fromRun(definitionId: string): ApiRun {
   };
 }
 
-function toExecutor(executor: ApiExecutor): Executor {
-  return {
-    id: executor.id,
-    name: executor.name,
-    image: executor.image || executor.executor_type,
-    description: String(executor.config.description || `${executor.executor_type} executor`),
-    createdAt: executor.created_at,
-  };
-}
-
-function fromExecutor(executor: Omit<Executor, 'id' | 'createdAt'>): ApiExecutor {
-  return {
-    id: NIL_UUID,
-    project_id: NIL_UUID,
-    name: executor.name,
-    executor_type: executor.image,
-    image: executor.image,
-    config: { description: executor.description },
-    status: 'active',
-    created_at: now(),
-    updated_at: now(),
-  };
-}
-
-function toSuite(suite: ApiSuite): Suite {
-  return {
-    id: suite.id,
-    name: suite.name,
-    description: suite.description,
-    testDefinitionIds: suite.test_definition_ids,
-    createdAt: suite.created_at,
-    executionMode: suite.execution_mode,
-  };
-}
-
-function fromSuite(suite: Omit<Suite, 'id' | 'createdAt'>): ApiSuite {
-  return {
-    id: NIL_UUID,
-    project_id: NIL_UUID,
-    name: suite.name,
-    description: suite.description,
-    test_definition_ids: suite.testDefinitionIds,
-    execution_mode: suite.executionMode,
-    created_at: now(),
-    updated_at: now(),
-  };
-}
-
 export function useStorage() {
   const [definitions, setDefinitions] = useState<Definition[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
-  const [executors, setExecutors] = useState<Executor[]>([]);
-  const [suites, setSuites] = useState<Suite[]>([]);
   const [loading, setLoading] = useState(true);
+  const trackedTerminalRuns = useRef(new Set<string>());
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [apiDefinitions, apiExecutors, apiSuites] = await Promise.all([
+      const [apiDefinitions, apiRuns] = await Promise.all([
         fetchApi<ApiDefinition[]>('/api/test-definitions'),
-        fetchApi<ApiExecutor[]>('/api/executors'),
-        fetchApi<ApiSuite[]>('/api/test-suites'),
+        fetchApi<ApiRun[]>('/api/test-runs'),
       ]);
       const nextDefinitions = apiDefinitions.map(toDefinition);
-      const apiRuns = await fetchApi<ApiRun[]>('/api/test-runs');
 
       setDefinitions(nextDefinitions);
-      setExecutors(apiExecutors.map(toExecutor));
-      setSuites(apiSuites.map(toSuite));
-      setRuns(apiRuns.map(run => toRun(run, nextDefinitions)));
+      setRuns(apiRuns.map((run) => toRun(run, nextDefinitions)));
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -230,68 +162,79 @@ export function useStorage() {
     }
   }, []);
 
+  const refreshRuns = useCallback(async () => {
+    try {
+      const apiRuns = await fetchApi<ApiRun[]>('/api/test-runs');
+      apiRuns.forEach((run) => {
+        if (
+          !trackedTerminalRuns.current.has(run.id) &&
+          ['passed', 'failed', 'error'].includes(run.status)
+        ) {
+          trackedTerminalRuns.current.add(run.id);
+          capturePostHog(`run_${run.status}`, { run_id: run.id });
+        }
+      });
+      setRuns(apiRuns.map((run) => toRun(run, definitions)));
+    } catch (error) {
+      console.error('Failed to refresh runs:', error);
+    }
+  }, [definitions]);
+
   useEffect(() => {
     loadData();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && event !== 'SIGNED_OUT') {
+        // Supabase may restore the session after the first storage request.
+        // Defer the reload so the auth callback can finish updating storage.
+        window.setTimeout(loadData, 0);
+      }
+    });
+
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) loadData();
+    });
+
+    return () => subscription.unsubscribe();
   }, [loadData]);
 
-  const createDefinition = async (testData: Omit<Definition, 'id' | 'createdAt'>) => {
+  useEffect(() => {
+    const interval = window.setInterval(refreshRuns, 5000);
+    return () => window.clearInterval(interval);
+  }, [refreshRuns]);
+
+  const createDefinition = async (
+    testData: Omit<Definition, 'id' | 'createdAt'>
+  ) => {
     const created = await fetchApi<ApiDefinition>('/api/test-definitions', {
       method: 'POST',
       body: JSON.stringify(fromDefinition(testData)),
     });
     const definition = toDefinition(created);
-    setDefinitions(prev => [definition, ...prev]);
+    setDefinitions((prev) => [definition, ...prev]);
     return definition;
   };
 
-  const updateDefinition = async (id: string, updates: Partial<Omit<Definition, 'id' | 'createdAt'>>) => {
-    const current = definitions.find(definition => definition.id === id);
+  const updateDefinition = async (
+    id: string,
+    updates: Partial<Omit<Definition, 'id' | 'createdAt'>>
+  ) => {
+    const current = definitions.find((definition) => definition.id === id);
     if (!current) throw new Error('Definition not found');
-    const updated = await fetchApi<ApiDefinition>(`/api/test-definitions/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(fromDefinition({ ...current, ...updates })),
-    });
-    setDefinitions(prev => prev.map(definition => definition.id === id ? toDefinition(updated) : definition));
-  };
-
-  const createExecutor = async (executorData: Omit<Executor, 'id' | 'createdAt'>) => {
-    const created = await fetchApi<ApiExecutor>('/api/executors', {
-      method: 'POST',
-      body: JSON.stringify(fromExecutor(executorData)),
-    });
-    const executor = toExecutor(created);
-    setExecutors(prev => [executor, ...prev]);
-    return executor;
-  };
-
-  const updateExecutor = async (id: string, updates: Partial<Omit<Executor, 'id' | 'createdAt'>>) => {
-    const current = executors.find(executor => executor.id === id);
-    if (!current) throw new Error('Executor not found');
-    const updated = await fetchApi<ApiExecutor>(`/api/executors/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(fromExecutor({ ...current, ...updates })),
-    });
-    setExecutors(prev => prev.map(executor => executor.id === id ? toExecutor(updated) : executor));
-  };
-
-  const createSuite = async (suiteData: Omit<Suite, 'id' | 'createdAt'>) => {
-    const created = await fetchApi<ApiSuite>('/api/test-suites', {
-      method: 'POST',
-      body: JSON.stringify(fromSuite(suiteData)),
-    });
-    const suite = toSuite(created);
-    setSuites(prev => [suite, ...prev]);
-    return suite;
-  };
-
-  const updateSuite = async (id: string, updates: Partial<Omit<Suite, 'id' | 'createdAt'>>) => {
-    const current = suites.find(suite => suite.id === id);
-    if (!current) throw new Error('Suite not found');
-    const updated = await fetchApi<ApiSuite>(`/api/test-suites/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(fromSuite({ ...current, ...updates })),
-    });
-    setSuites(prev => prev.map(suite => suite.id === id ? toSuite(updated) : suite));
+    const updated = await fetchApi<ApiDefinition>(
+      `/api/test-definitions/${id}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(fromDefinition({ ...current, ...updates })),
+      }
+    );
+    setDefinitions((prev) =>
+      prev.map((definition) =>
+        definition.id === id ? toDefinition(updated) : definition
+      )
+    );
   };
 
   const runTest = async (definitionId: string) => {
@@ -300,54 +243,28 @@ export function useStorage() {
       body: JSON.stringify(fromRun(definitionId)),
     });
     const run = toRun(created, definitions);
-    setRuns(prev => [run, ...prev]);
+    setRuns((prev) => [run, ...prev]);
+    capturePostHog('run_queued', { definition_id: definitionId });
     return run;
-  };
-
-  const runSuite = async (suiteId: string) => {
-    const suite = suites.find(item => item.id === suiteId);
-    if (!suite) throw new Error('Suite not found');
-    for (const definitionId of suite.testDefinitionIds) {
-      await runTest(definitionId);
-    }
   };
 
   const deleteDefinition = async (id: string) => {
     await fetchApi<void>(`/api/test-definitions/${id}`, { method: 'DELETE' });
-    setDefinitions(prev => prev.filter(definition => definition.id !== id));
+    setDefinitions((prev) => prev.filter((definition) => definition.id !== id));
   };
 
   const deleteRun = async (id: string) => {
-    setRuns(prev => prev.filter(run => run.id !== id));
-  };
-
-  const deleteExecutor = async (id: string) => {
-    await fetchApi<void>(`/api/executors/${id}`, { method: 'DELETE' });
-    setExecutors(prev => prev.filter(executor => executor.id !== id));
-  };
-
-  const deleteSuite = async (id: string) => {
-    await fetchApi<void>(`/api/test-suites/${id}`, { method: 'DELETE' });
-    setSuites(prev => prev.filter(suite => suite.id !== id));
+    setRuns((prev) => prev.filter((run) => run.id !== id));
   };
 
   return {
     definitions,
     runs,
-    executors,
-    suites,
     loading,
     createDefinition,
     updateDefinition,
-    createExecutor,
-    updateExecutor,
-    createSuite,
-    updateSuite,
     runTest,
-    runSuite,
     deleteDefinition,
     deleteRun,
-    deleteExecutor,
-    deleteSuite,
   };
 }

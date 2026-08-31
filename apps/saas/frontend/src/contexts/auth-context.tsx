@@ -1,10 +1,17 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  ReactNode,
+} from 'react';
 import { Session, User, AuthError } from '@supabase/supabase-js';
+import { API_BASE_URL } from '@/lib/api-config';
 import { supabase } from '@/lib/supabase';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import { capturePostHog, identifyPostHog } from '@/lib/posthog';
 
 interface AuthState {
   user: User | null;
@@ -13,8 +20,15 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-  signUp: (email: string, password: string, name?: string) => Promise<{ error: AuthError | null }>;
+  signIn: (
+    email: string,
+    password: string
+  ) => Promise<{ error: AuthError | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    name?: string
+  ) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
 }
@@ -34,7 +48,7 @@ async function syncProfile(session: Session | null) {
     return;
   }
 
-  await fetch(`${API_BASE_URL}/api/profile`, {
+  const response = await fetch(`${API_BASE_URL}/api/profile`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${session.access_token}`,
@@ -48,6 +62,7 @@ async function syncProfile(session: Session | null) {
           : undefined,
     }),
   });
+  if (response.ok) capturePostHog('project_ready');
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -70,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setState({ user: session?.user ?? null, session, loading: false });
+      if (session?.user) identifyPostHog(session.user.id);
       void syncProfile(session);
     });
 
@@ -78,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setState({ user: session?.user ?? null, session, loading: false });
+      if (session?.user) identifyPostHog(session.user.id);
       void syncProfile(session);
     });
 
@@ -85,22 +102,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
-  }, []);
-
-  const signUp = useCallback(async (email: string, password: string, name?: string) => {
-    const appOrigin = getAppOrigin();
-    const { error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
-      options: {
-        data: { name: name || email.split('@')[0] },
-        ...(appOrigin ? { emailRedirectTo: appOrigin } : {}),
-      },
     });
     return { error };
   }, []);
+
+  const signUp = useCallback(
+    async (email: string, password: string, name?: string) => {
+      const appOrigin = getAppOrigin();
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name: name || email.split('@')[0] },
+          ...(appOrigin ? { emailRedirectTo: appOrigin } : {}),
+        },
+      });
+      if (!error) {
+        capturePostHog('signup_completed');
+        if (data.user) capturePostHog('project_created');
+      }
+      return { error };
+    },
+    []
+  );
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -114,7 +141,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, signIn, signUp, signOut, resetPassword }}>
+    <AuthContext.Provider
+      value={{ ...state, signIn, signUp, signOut, resetPassword }}
+    >
       {children}
     </AuthContext.Provider>
   );
