@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Definition, Executor, Suite } from '@tatou/core';
 import { CreateTestDialog } from '@/components/create-test-dialog';
 import { CreateExecutorDialog } from '@/components/create-executor-dialog';
@@ -18,8 +19,23 @@ import { SaasSections } from '@/components/dashboard/saas-sections';
 import { AuthGate } from '@/components/auth/auth-gate';
 import { UserMenu } from '@/components/auth/user-menu';
 import { UpdatePasswordForm } from '@/components/auth/update-password-form';
+import { MarketingPage } from '@/components/marketing/marketing-page';
+import { useAuth } from '@/contexts/auth-context';
 
 export default function Home() {
+  return (
+    <Suspense fallback={<MarketingPage />}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
+  const { user } = useAuth();
+  const authParam = useSearchParams().get('auth');
+  const publicAuthView = authParam === 'login' || authParam === 'signup'
+    ? authParam
+    : null;
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
     if (typeof window === 'undefined') {
       return false;
@@ -82,6 +98,13 @@ export default function Home() {
 
   if (isPasswordRecovery) {
     return <UpdatePasswordForm />;
+  }
+
+  if (!user) {
+    if (publicAuthView) {
+      return <AuthGate initialView={publicAuthView}>{null}</AuthGate>;
+    }
+    return <MarketingPage />;
   }
 
   const handleCreateDefinition = async (testData: Omit<Definition, 'id' | 'createdAt'>) => {

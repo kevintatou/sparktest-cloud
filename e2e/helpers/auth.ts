@@ -70,7 +70,7 @@ export async function getE2ECredentials(): Promise<Credentials> {
 }
 
 export async function login(page: Page, credentials: Credentials) {
-  await page.goto('/');
+  await page.goto('/?auth=login');
   const profileSync = page
     .waitForResponse(
       (response) =>

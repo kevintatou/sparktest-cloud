@@ -211,6 +211,14 @@ export function useStorage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setDefinitions([]);
+        setRuns([]);
+        setExecutors([]);
+        setSuites([]);
+        return;
+      }
       const [apiDefinitions, apiExecutors, apiSuites] = await Promise.all([
         fetchApi<ApiDefinition[]>('/api/test-definitions'),
         fetchApi<ApiExecutor[]>('/api/executors'),

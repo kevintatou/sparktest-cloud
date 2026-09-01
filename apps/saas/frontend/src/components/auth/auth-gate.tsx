@@ -11,11 +11,12 @@ type AuthView = 'login' | 'signup' | 'reset';
 
 interface AuthGateProps {
   children: React.ReactNode;
+  initialView?: AuthView;
 }
 
-export function AuthGate({ children }: AuthGateProps) {
+export function AuthGate({ children, initialView = 'login' }: AuthGateProps) {
   const { user, loading } = useAuth();
-  const [view, setView] = useState<AuthView>('login');
+  const [view, setView] = useState<AuthView>(initialView);
 
   if (loading) {
     return (

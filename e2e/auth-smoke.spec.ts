@@ -8,17 +8,12 @@ const e2ePassword = process.env.E2E_PASSWORD;
 test('auth entry points render and validate input', async ({ page }) => {
   await page.goto('/');
 
-  await expect(
-    page.getByRole('heading', { name: 'SparkTest Cloud' })
-  ).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Run your tests. Anywhere.' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Start free' }).first()).toBeVisible();
+  await page.getByRole('link', { name: 'Start free' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Create an account' })).toBeVisible();
   await expect(page.getByLabel('Email')).toBeVisible();
   await expect(page.getByLabel('Password')).toBeVisible();
-
-  await page.getByRole('button', { name: 'Sign up' }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Create an account' })
-  ).toBeVisible();
 
   await page.getByLabel('Name').fill('E2E Smoke');
   await page.getByLabel('Email').fill('e2e-smoke@example.com');
@@ -39,7 +34,7 @@ test('auth entry points render and validate input', async ({ page }) => {
 });
 
 test('invalid login returns an auth error', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?auth=login');
 
   await page.getByLabel('Email').fill(`missing-${Date.now()}@example.com`);
   await page.getByLabel('Password').fill('DefinitelyWrong123');
