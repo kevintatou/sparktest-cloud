@@ -42,8 +42,8 @@ SparkTest Cloud is currently free during the beta. The supported flow is:
 
 1. Create an account and confirm the email if Supabase requires it.
 2. Open **Agents**, create an agent token, and copy it immediately.
-3. Clone the public repository on the machine that will run the agent.
-4. Set `SPARKTEST_CLOUD_URL` and `SPARKTEST_AGENT_TOKEN`, then run the agent.
+3. Install the native agent with the one-line installer.
+4. Connect the token, then start the agent.
 5. Confirm the agent is online in **Agents**.
 6. Create a definition, run it, and watch the result move from queued to passed or failed.
 
@@ -60,12 +60,35 @@ NEXT_PUBLIC_API_URL=http://localhost:3001 pnpm dev:frontend
 
 The frontend runs at `http://localhost:3000` and the API at `http://localhost:3001`.
 
-### Agent Commands
+### End-user Agent Installation
+
+```bash
+export SPARKTEST_AGENT_TOKEN=stc_your_token
+curl -fsSL https://raw.githubusercontent.com/kevintatou/sparktest-cloud/main/scripts/install-agent.sh | bash
+
+sparktest-agent run
+```
+
+The installer downloads a released native binary. It does not clone the
+repository and does not require Rust, Cargo, Node, pnpm, Docker, or Kubernetes.
+For local development, override the API URL before connecting:
+
+```bash
+export SPARKTEST_CLOUD_URL=http://localhost:3001
+sparktest-agent connect stc_your_token
+sparktest-agent run
+```
+
+Useful commands are `sparktest-agent status`, `version`, and `disconnect`.
+
+### Contributor Agent Development
+
+Contributors can still build the agent from source:
 
 ```bash
 git clone https://github.com/kevintatou/sparktest-cloud.git
 cd sparktest-cloud
-export SPARKTEST_CLOUD_URL=https://your-api-host
+export SPARKTEST_CLOUD_URL=http://localhost:3001
 export SPARKTEST_AGENT_TOKEN=stc_your_token
 cargo run -p sparktest-agent
 ```

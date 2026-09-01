@@ -1,0 +1,94 @@
+name: Release Native Agent
+
+on:
+  push:
+    tags: ['agent-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            archive: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build agent
+        run: cargo build --release --target ${{ matrix.target }} -p sparktest-agent
+
+      - name: Package Unix artifact
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#agent-v}"
+          mkdir -p package
+          cp "target/${{ matrix.target }}/release/sparktest-agent" package/
+          tar -czf "sparktest-agent-v${version}-${{ matrix.target }}.tar.gz" -C package sparktest-agent
+          stat -c '%n %s bytes' "target/${{ matrix.target }}/release/sparktest-agent" || stat -f '%N %z bytes' "target/${{ matrix.target }}/release/sparktest-agent"
+
+      - name: Package Windows artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "$env:GITHUB_REF_NAME".Replace("agent-v", "")
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/sparktest-agent.exe" package/
+          Compress-Archive -Path package/sparktest-agent.exe -DestinationPath "sparktest-agent-v$version-${{ matrix.target }}.zip"
+          $size = (Get-Item "target/${{ matrix.target }}/release/sparktest-agent.exe").Length
+          Write-Output "target/${{ matrix.target }}/release/sparktest-agent.exe $size bytes"
+
+      - name: Generate checksum
+        shell: bash
+        run: |
+          artifact="$(find . -maxdepth 1 -name 'sparktest-agent-v*-${{ matrix.target }}.*' -print -quit)"
+          if command -v sha256sum >/dev/null; then sha256sum "$artifact" > "$artifact.sha256"; else shasum -a 256 "$artifact" > "$artifact.sha256"; fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-${{ matrix.target }}
+          path: |
+            sparktest-agent-v*-${{ matrix.target }}.*
+            sparktest-agent-v*-${{ matrix.target }}.*.sha256
+
+  release:
+    name: Publish GitHub release
+    if: startsWith(github.ref, 'refs/tags/agent-v')
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          pattern: agent-*
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release/*
