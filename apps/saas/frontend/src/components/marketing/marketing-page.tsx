@@ -7,8 +7,8 @@ import {
   Check,
   Github,
   Laptop,
-  Play,
   Terminal,
+  Video,
   Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -73,36 +73,22 @@ export function MarketingPage() {
           </div>
         </div>
 
-        <div className="relative min-h-[320px] rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7">
-          <div className="flex items-center justify-between border-b border-border pb-4 text-sm">
-            <span className="font-semibold">SparkTest Cloud</span>
-            <span className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Agent online
+        <div
+          className="relative flex aspect-video min-h-[320px] items-center justify-center overflow-hidden rounded-2xl border border-border bg-slate-950 shadow-sm sm:min-h-0"
+          data-testid="marketing-video"
+        >
+          <div className="flex flex-col items-center gap-3 text-center text-white/80">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full border border-white/30 bg-white/10">
+              <Video className="h-6 w-6" />
             </span>
+            <span className="text-sm font-medium">SparkTest demo video</span>
+            <span className="text-xs text-white/50">Add product video here</span>
           </div>
-          <div className="mt-5 space-y-3 font-mono text-sm">
-            <div className="rounded-lg border border-border bg-secondary/60 p-3">
-              <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-                <Play className="h-3.5 w-3.5" />
-                Recent run
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="truncate">npx playwright test</span>
-                <span className="text-emerald-600 dark:text-emerald-400">passed</span>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="rounded-lg border border-border p-3"><strong className="block text-lg text-emerald-600 dark:text-emerald-400">142</strong>passed</div>
-              <div className="rounded-lg border border-border p-3"><strong className="block text-lg text-destructive">2</strong>failed</div>
-              <div className="rounded-lg border border-border p-3"><strong className="block text-lg">38s</strong>duration</div>
-            </div>
-          </div>
-          <div className="absolute -bottom-7 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm shadow-sm">
-            <Laptop className="h-4 w-4 text-primary" />
-            <span>Your machine</span>
-            <ArrowRight className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium">Agent</span>
+          <div className="absolute bottom-4 left-4 flex items-center gap-3 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-xs text-white/70 backdrop-blur">
+            <Laptop className="h-4 w-4" />
+            Your machine
+            <ArrowRight className="h-4 w-4" />
+            <span className="font-medium text-white">Agent</span>
           </div>
         </div>
       </section>
