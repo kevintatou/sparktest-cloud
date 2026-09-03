@@ -199,6 +199,7 @@ function HomeContent() {
           handleRunTest={handleRunDefinition}
           handleDeleteTest={handleDeleteDefinition}
           deleteRun={deleteRun}
+          executors={executors}
         />
       );
     }
@@ -307,6 +308,7 @@ function HomeContent() {
           open={showCreateDialog}
           onOpenChange={setShowCreateDialog}
           onCreateTest={handleCreateDefinition}
+          executors={executors}
         />
       </div>
     </AuthGate>

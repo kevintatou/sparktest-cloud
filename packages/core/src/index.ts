@@ -28,6 +28,7 @@ export interface Definition {
   description?: string;
   image: string;
   commands: string[];
+  executorId?: string;
   createdAt: string;
 }
 
@@ -47,6 +48,9 @@ export interface Executor {
   id: string;
   name: string;
   image: string;
+  command: string[];
+  supportedFileTypes: string[];
+  environmentVariables: string[];
   description: string;
   createdAt: string;
 }

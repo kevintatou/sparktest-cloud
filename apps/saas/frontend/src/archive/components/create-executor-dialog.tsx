@@ -44,6 +44,9 @@ export function CreateExecutorDialog({
       name,
       description,
       image,
+      command: [],
+      supportedFileTypes: [],
+      environmentVariables: [],
     });
 
     // Reset form

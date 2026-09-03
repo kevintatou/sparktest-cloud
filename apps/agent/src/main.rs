@@ -22,6 +22,7 @@ struct AgentRequest {
 struct QueueResponse {
     run: Option<TestRun>,
     definition: Option<TestDefinition>,
+    executor: Option<Executor>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,6 +36,13 @@ struct TestRun {
 struct TestDefinition {
     image: String,
     commands: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Executor {
+    executor_type: String,
+    image: Option<String>,
+    config: Option<Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -108,7 +116,15 @@ async fn run_agent(once: bool) -> Result<()> {
         check_in(&client, &api_url, &token, &name).await?;
         let queue = next_run(&client, &api_url, &token, &name).await?;
         if let Some(run) = queue.run {
-            execute_run(&client, &api_url, &token, run, queue.definition).await?;
+            execute_run(
+                &client,
+                &api_url,
+                &token,
+                run,
+                queue.definition,
+                queue.executor,
+            )
+            .await?;
         }
 
         if once {
@@ -202,9 +218,7 @@ fn parse_command(args: Vec<String>) -> Result<AgentCommand> {
         "status" => Ok(AgentCommand::Status),
         "version" | "--version" | "-V" => Ok(AgentCommand::Version),
         "disconnect" => Ok(AgentCommand::Disconnect),
-        "--help" | "-h" => {
-            Ok(AgentCommand::Help)
-        }
+        "--help" | "-h" => Ok(AgentCommand::Help),
         value => anyhow::bail!("Unknown command: {value}. Use --help for usage."),
     }
 }
@@ -294,15 +308,24 @@ async fn execute_run(
     token: &str,
     run: TestRun,
     definition: Option<TestDefinition>,
+    executor: Option<Executor>,
 ) -> Result<()> {
     let command = definition
         .as_ref()
         .map(|definition| definition.commands.join(" && "))
         .filter(|command| !command.trim().is_empty())
+        .or_else(|| executor.as_ref().and_then(default_command))
         .unwrap_or_else(|| "echo sparktest agent execution".to_string());
-    let output = if std::env::var("SPARKTEST_AGENT_EXECUTOR").ok().as_deref() == Some("kubernetes")
-    {
-        execute_kubernetes_job(&run, definition.as_ref(), &command).await
+    let env_executor_type = std::env::var("SPARKTEST_AGENT_EXECUTOR").ok();
+    let executor_type = executor
+        .as_ref()
+        .map(|item| item.executor_type.as_str())
+        .or(env_executor_type.as_deref())
+        .unwrap_or("local");
+    let output = if executor_type == "kubernetes" {
+        execute_kubernetes_job(&run, definition.as_ref(), executor.as_ref(), &command).await
+    } else if executor_type == "docker" {
+        execute_docker(&definition, executor.as_ref(), &command).await
     } else {
         Command::new("sh")
             .arg("-lc")
@@ -349,13 +372,32 @@ async fn execute_run(
     Ok(())
 }
 
+async fn execute_docker(
+    definition: &Option<TestDefinition>,
+    executor: Option<&Executor>,
+    command: &str,
+) -> std::io::Result<std::process::Output> {
+    let image = executor
+        .and_then(|item| item.image.as_deref())
+        .or_else(|| definition.as_ref().map(|item| item.image.as_str()))
+        .unwrap_or("alpine:3.20");
+    Command::new("docker")
+        .args(["run", "--rm", image, "sh", "-lc", command])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+}
+
 async fn execute_kubernetes_job(
     run: &TestRun,
     definition: Option<&TestDefinition>,
+    executor: Option<&Executor>,
     command: &str,
 ) -> std::io::Result<std::process::Output> {
-    let image = definition
-        .map(|definition| definition.image.as_str())
+    let image = executor
+        .and_then(|executor| executor.image.as_deref())
+        .or_else(|| definition.map(|definition| definition.image.as_str()))
         .unwrap_or("alpine:3.20");
     let job_suffix = run.id.replace('-', "").chars().take(24).collect::<String>();
     let job_name = format!("sparktest-{job_suffix}");
@@ -411,6 +453,22 @@ async fn execute_kubernetes_job(
     } else {
         Ok(wait)
     }
+}
+
+fn default_command(executor: &Executor) -> Option<String> {
+    executor
+        .config
+        .as_ref()
+        .and_then(|config| config.get("default_command"))
+        .and_then(Value::as_array)
+        .map(|parts| {
+            parts
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .filter(|command| !command.trim().is_empty())
 }
 
 fn hostname() -> String {

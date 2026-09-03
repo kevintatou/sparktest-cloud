@@ -95,6 +95,7 @@ struct TriggerRunRequest {
 struct QueueResponse {
     run: Option<SaasTestRun>,
     definition: Option<SaasTestDefinition>,
+    executor: Option<Executor>,
 }
 
 #[derive(Debug, Clone)]
@@ -364,6 +365,7 @@ async fn create_test_definition(
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
     let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
+    ensure_executor_access(&db, ctx.project_id, definition.executor_id).await?;
     definition.id = Uuid::new_v4();
     definition.project_id = ctx.project_id;
     definition.created_at = Utc::now();
@@ -397,6 +399,7 @@ async fn update_test_definition(
 ) -> Result<Json<SaasTestDefinition>, StatusCode> {
     let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
+    ensure_executor_access(&db, ctx.project_id, definition.executor_id).await?;
     definition.id = id;
     definition.project_id = ctx.project_id;
     definition.updated_at = Utc::now();
@@ -438,6 +441,22 @@ async fn create_test_run(
 ) -> Result<Json<SaasTestRun>, StatusCode> {
     let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
+    ensure_executor_access(&db, ctx.project_id, run.executor_id).await?;
+    if let Some(definition_id) = run.definition_id {
+        let definition = db
+            .get_test_definition(definition_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if definition
+            .as_ref()
+            .is_none_or(|definition| definition.project_id != ctx.project_id)
+        {
+            return Err(StatusCode::FORBIDDEN);
+        }
+        if run.executor_id.is_none() {
+            run.executor_id = definition.and_then(|definition| definition.executor_id);
+        }
+    }
     run.id = Uuid::new_v4();
     run.project_id = ctx.project_id;
     run.status = if run.status.is_empty() {
@@ -569,10 +588,32 @@ async fn delete_executor(
 ) -> Result<StatusCode, StatusCode> {
     let ctx = human_context(&headers, &db).await;
     ensure_project_access(&db, &ctx).await?;
+    match db.get_executor(id).await {
+        Ok(Some(executor)) if executor.project_id == ctx.project_id => {}
+        Ok(Some(_)) => return Err(StatusCode::FORBIDDEN),
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
     db.delete_executor(id)
         .await
         .map(|_| StatusCode::NO_CONTENT)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn ensure_executor_access(
+    db: &Database,
+    project_id: Uuid,
+    executor_id: Option<Uuid>,
+) -> Result<(), StatusCode> {
+    let Some(executor_id) = executor_id else {
+        return Ok(());
+    };
+    match db.get_executor(executor_id).await {
+        Ok(Some(executor)) if executor.project_id == project_id => Ok(()),
+        Ok(Some(_)) => Err(StatusCode::FORBIDDEN),
+        Ok(None) => Err(StatusCode::BAD_REQUEST),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 async fn list_test_suites(
@@ -1078,7 +1119,22 @@ async fn agent_next_run(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
         None => None,
     };
-    Ok(Json(QueueResponse { run, definition }))
+    let executor = match run.as_ref().and_then(|run| run.executor_id).or_else(|| {
+        definition
+            .as_ref()
+            .and_then(|definition| definition.executor_id)
+    }) {
+        Some(executor_id) => db
+            .get_executor(executor_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+        None => None,
+    };
+    Ok(Json(QueueResponse {
+        run,
+        definition,
+        executor,
+    }))
 }
 
 async fn agent_update_run_status(
@@ -1123,13 +1179,19 @@ async fn agent_trigger_run(
     Json(request): Json<TriggerRunRequest>,
 ) -> Result<Json<SaasTestRun>, StatusCode> {
     let token = authenticate_agent(&headers, &db).await?;
+    let definition = db
+        .get_test_definition(request.definition_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .filter(|definition| definition.project_id == token.project_id)
+        .ok_or(StatusCode::FORBIDDEN)?;
     let now = Utc::now();
     let run = SaasTestRun {
         id: Uuid::new_v4(),
         project_id: token.project_id,
         definition_id: Some(request.definition_id),
         suite_id: None,
-        executor_id: None,
+        executor_id: definition.executor_id,
         agent_id: None,
         status: "queued".to_string(),
         result: None,

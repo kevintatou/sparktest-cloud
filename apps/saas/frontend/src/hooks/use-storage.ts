@@ -44,7 +44,12 @@ type ApiExecutor = {
   name: string;
   executor_type: string;
   image?: string | null;
-  config?: Record<string, unknown>;
+  config?: {
+    description?: string;
+    default_command?: string[];
+    supported_file_types?: string[];
+    environment_variables?: string[];
+  };
   status: string;
   created_at: string;
   updated_at: string;
@@ -107,6 +112,7 @@ function toDefinition(definition: ApiDefinition): Definition {
     description: definition.description,
     image: definition.image,
     commands: definition.commands,
+    executorId: definition.executor_id || undefined,
     createdAt: definition.created_at,
   };
 }
@@ -121,7 +127,7 @@ function fromDefinition(
     description: definition.description,
     image: definition.image,
     commands: definition.commands,
-    executor_id: null,
+    executor_id: definition.executorId || null,
     labels: [],
     created_at: now(),
     updated_at: now(),
@@ -142,13 +148,13 @@ function toRun(run: ApiRun, definitions: Definition[]): Run {
   };
 }
 
-function fromRun(definitionId: string): ApiRun {
+function fromRun(definitionId: string, executorId?: string): ApiRun {
   return {
     id: NIL_UUID,
     project_id: NIL_UUID,
     definition_id: definitionId,
     suite_id: null,
-    executor_id: null,
+    executor_id: executorId || null,
     agent_id: null,
     status: 'queued',
     result: null,
@@ -166,7 +172,10 @@ function toExecutor(executor: ApiExecutor): Executor {
     id: executor.id,
     name: executor.name,
     image: executor.image || executor.executor_type,
-    description: executor.config?.description as string || '',
+    command: executor.config?.default_command || [],
+    supportedFileTypes: executor.config?.supported_file_types || [],
+    environmentVariables: executor.config?.environment_variables || [],
+    description: executor.config?.description || '',
     createdAt: executor.created_at,
   };
 }
@@ -296,9 +305,10 @@ export function useStorage() {
   };
 
   const runTest = async (definitionId: string) => {
+    const definition = definitions.find((item) => item.id === definitionId);
     const created = await fetchApi<ApiRun>('/api/test-runs', {
       method: 'POST',
-      body: JSON.stringify(fromRun(definitionId)),
+      body: JSON.stringify(fromRun(definitionId, definition?.executorId)),
     });
     const run = toRun(created, definitions);
     setRuns((prev) => [run, ...prev]);
@@ -318,7 +328,10 @@ export function useStorage() {
   const createExecutor = async (data: {
     name: string;
     executorType: string;
-    image?: string;
+    image: string;
+    command: string[];
+    supportedFileTypes: string[];
+    environmentVariables: string[];
     description?: string;
   }) => {
     const created = await fetchApi<ApiExecutor>('/api/executors', {
@@ -327,7 +340,12 @@ export function useStorage() {
         name: data.name,
         executor_type: data.executorType,
         image: data.image || null,
-        config: data.description ? { description: data.description } : {},
+        config: {
+          description: data.description || '',
+          default_command: data.command,
+          supported_file_types: data.supportedFileTypes,
+          environment_variables: data.environmentVariables,
+        },
       }),
     });
     const executor = toExecutor(created);

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from 'react';
-import { Definition } from '@tatou/core';
+import { Definition, Executor } from '@tatou/core';
 import { 
   Dialog, 
   DialogContent, 
@@ -23,6 +23,7 @@ interface CreateTestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreateTest: (test: Omit<Definition, 'id' | 'createdAt'>) => void;
+  executors?: Executor[];
   initialValues?: Partial<Definition>;
 }
 
@@ -30,13 +31,15 @@ export function CreateTestDialog({
   open, 
   onOpenChange, 
   onCreateTest,
-  initialValues 
+  initialValues,
+  executors = [],
 }: CreateTestDialogProps) {
   const [formData, setFormData] = useState({
     name: initialValues?.name || '',
     description: initialValues?.description || '',
     commands: initialValues?.commands?.[0] || '// Write your code here\nconsole.log("Hello, World!");',
     image: initialValues?.image || 'javascript',
+    executorId: initialValues?.executorId || '',
     // Advanced settings
     timeout: '30',
     maxRetries: '3',
@@ -74,6 +77,7 @@ export function CreateTestDialog({
       description: formData.description,
       commands: [formData.commands],
       image: formData.image,
+      executorId: formData.executorId || undefined,
     });
 
     // Reset form
@@ -82,6 +86,7 @@ export function CreateTestDialog({
       description: '',
       commands: '// Write your test code here\nconsole.log("Hello, World!");',
       image: 'javascript',
+      executorId: '',
       timeout: '30',
       maxRetries: '3',
       environment: 'development',
@@ -98,6 +103,7 @@ export function CreateTestDialog({
       description: '',
       commands: '// Write your code here\nconsole.log("Hello, World!");',
       image: 'javascript',
+      executorId: '',
       timeout: '30',
       maxRetries: '3',
       environment: 'development',
@@ -174,6 +180,21 @@ export function CreateTestDialog({
               {errors.commands && (
                 <p className="text-sm text-destructive">{errors.commands}</p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="executor">Executor</Label>
+              <Select
+                value={formData.executorId || 'none'}
+                onValueChange={(value) => setFormData({ ...formData, executorId: value === 'none' ? '' : value })}
+              >
+                <SelectTrigger id="executor"><SelectValue placeholder="Use definition defaults" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Use definition defaults</SelectItem>
+                  {executors.map((executor) => <SelectItem key={executor.id} value={executor.id}>{executor.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {executors.length === 0 && <p className="text-xs text-muted-foreground">Create an executor first to select one here.</p>}
             </div>
           </div>
 

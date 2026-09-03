@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { TestDefinitionCard, TestRunCard } from '@tatou/ui';
-import { Definition, Run } from '@tatou/core';
+import { Definition, Executor, Run } from '@tatou/core';
 import { Plus, FileText, Play } from 'lucide-react';
 import { NavigationKey } from './navigation';
 import { RunDetail } from './run-detail';
@@ -18,6 +18,7 @@ export interface TestSectionsProps {
   handleRunTest: (id: string) => void;
   handleDeleteTest: (id: string) => void;
   deleteRun: (id: string) => void;
+  executors: Executor[];
 }
 
 export const TestSections: React.FC<TestSectionsProps> = ({
@@ -29,6 +30,7 @@ export const TestSections: React.FC<TestSectionsProps> = ({
   handleRunTest,
   handleDeleteTest,
   deleteRun,
+  executors,
 }) => {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 

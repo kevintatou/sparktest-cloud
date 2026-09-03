@@ -16,7 +16,7 @@ type Props = {
   definitions: Definition[];
   executors: Executor[];
   suites: Suite[];
-  createExecutor: (data: { name: string; executorType: string; image?: string; description?: string }) => Promise<Executor>;
+  createExecutor: (data: { name: string; executorType: string; image: string; command: string[]; supportedFileTypes: string[]; environmentVariables: string[]; description?: string }) => Promise<Executor>;
   deleteExecutor: (id: string) => Promise<void>;
   createSuite: (data: { name: string; description?: string; executionMode: Suite['executionMode']; testDefinitionIds: string[] }) => Promise<Suite>;
   deleteSuite: (id: string) => Promise<void>;
@@ -31,7 +31,11 @@ export function ResourceSections({ activeTab, definitions, executors, suites, cr
 
 function ExecutorSection({ executors, createExecutor, deleteExecutor }: Pick<Props, 'executors' | 'createExecutor' | 'deleteExecutor'>) {
   const [name, setName] = useState('');
-  const [type, setType] = useState('native-agent');
+  const [type, setType] = useState('docker');
+  const [image, setImage] = useState('');
+  const [command, setCommand] = useState('');
+  const [fileTypes, setFileTypes] = useState('');
+  const [environment, setEnvironment] = useState('');
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -40,22 +44,27 @@ function ExecutorSection({ executors, createExecutor, deleteExecutor }: Pick<Pro
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await createExecutor({ name: name.trim(), executorType: type, description: description.trim() });
+      await createExecutor({ name: name.trim(), executorType: type, image: image.trim(), command: command.split(',').map((item) => item.trim()).filter(Boolean), supportedFileTypes: fileTypes.split(',').map((item) => item.trim()).filter(Boolean), environmentVariables: environment.split(',').map((item) => item.trim()).filter(Boolean), description: description.trim() });
       setName('');
       setDescription('');
+      setImage(''); setCommand(''); setFileTypes(''); setEnvironment('');
     } finally {
       setSaving(false);
     }
   };
 
   return <ResourceLayout title="Executors" description="Manage the environments that can execute your tests.">
-    <Card><CardContent className="pt-6"><form onSubmit={submit} className="grid gap-4 md:grid-cols-4 md:items-end">
+    <Card><CardContent className="pt-6"><form onSubmit={submit} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <div className="space-y-2"><Label htmlFor="executor-name">Name</Label><Input id="executor-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Local agent" /></div>
       <div className="space-y-2"><Label htmlFor="executor-type">Type</Label><Input id="executor-type" value={type} onChange={(event) => setType(event.target.value)} placeholder="native-agent" /></div>
+      <div className="space-y-2"><Label htmlFor="executor-image">Docker image</Label><Input id="executor-image" value={image} onChange={(event) => setImage(event.target.value)} placeholder="node:20-alpine" required /></div>
+      <div className="space-y-2"><Label htmlFor="executor-command">Default command</Label><Input id="executor-command" value={command} onChange={(event) => setCommand(event.target.value)} placeholder="npm test, --runInBand" /><p className="text-xs text-muted-foreground">Comma-separated command arguments.</p></div>
+      <div className="space-y-2"><Label htmlFor="executor-files">Supported file types</Label><Input id="executor-files" value={fileTypes} onChange={(event) => setFileTypes(event.target.value)} placeholder="js, ts, json" /><p className="text-xs text-muted-foreground">Comma-separated extensions.</p></div>
+      <div className="space-y-2"><Label htmlFor="executor-env">Environment variables</Label><Input id="executor-env" value={environment} onChange={(event) => setEnvironment(event.target.value)} placeholder="NODE_ENV, CI" /><p className="text-xs text-muted-foreground">Names injected into the run.</p></div>
       <div className="space-y-2"><Label htmlFor="executor-description">Description</Label><Input id="executor-description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional" /></div>
-      <Button type="submit" disabled={saving || !name.trim()}><Plus className="mr-2 h-4 w-4" />Add executor</Button>
+      <Button type="submit" disabled={saving || !name.trim() || !image.trim()}><Plus className="mr-2 h-4 w-4" />Add executor</Button>
     </form></CardContent></Card>
-    <div className="grid gap-4 md:grid-cols-2">{executors.map((executor) => <Card key={executor.id}><CardContent className="flex items-start justify-between gap-4 pt-6"><div><h3 className="font-semibold">{executor.name}</h3><p className="text-sm text-muted-foreground">{executor.image}</p>{executor.description && <p className="mt-2 text-sm text-muted-foreground">{executor.description}</p>}</div><Button variant="ghost" size="icon" aria-label={`Delete ${executor.name}`} onClick={() => deleteExecutor(executor.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></CardContent></Card>)}</div>
+    <div className="grid gap-4 md:grid-cols-2">{executors.map((executor) => <Card key={executor.id}><CardContent className="flex items-start justify-between gap-4 pt-6"><div><h3 className="font-semibold">{executor.name}</h3><p className="text-sm text-muted-foreground">{executor.image}</p><p className="text-sm text-muted-foreground">{executor.command.join(' ') || 'No default command'}</p><p className="text-xs text-muted-foreground">Files: {executor.supportedFileTypes.join(', ') || 'Any'}</p>{executor.description && <p className="mt-2 text-sm text-muted-foreground">{executor.description}</p>}</div><Button variant="ghost" size="icon" aria-label={`Delete ${executor.name}`} onClick={() => deleteExecutor(executor.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></CardContent></Card>)}</div>
     {executors.length === 0 && <Empty text="No executors yet. Add the environment that should run your tests." />}
   </ResourceLayout>;
 }
