@@ -103,10 +103,19 @@ jobs:
               body,
             });
 
+      - name: Update stable development domain
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel@latest alias set "${{ steps.deploy.outputs.url }}" dev.sparktest.dev --token "$VERCEL_TOKEN"
+
       - name: Deployment summary
         run: |
           echo "SparkTest Cloud development preview deployed:"
           echo "${{ steps.deploy.outputs.url }}"
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "Stable development domain: https://dev.sparktest.dev"
+          fi
 
   deploy-production:
     name: Deploy production
