@@ -60,7 +60,6 @@ jobs:
         run: pnpm build:saas-frontend
 
       - name: Link Vercel project
-        working-directory: apps/saas/frontend
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -73,7 +72,6 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        working-directory: apps/saas/frontend
         run: npx vercel@latest pull --yes --environment=preview --token "$VERCEL_TOKEN"
 
       - name: Build Vercel output
@@ -81,7 +79,6 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        working-directory: apps/saas/frontend
         run: npx vercel@latest build --token "$VERCEL_TOKEN"
 
       - name: Deploy preview to Vercel
@@ -91,7 +88,6 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        working-directory: apps/saas/frontend
         run: |
           deployment_url="$(npx vercel@latest deploy --prebuilt --no-wait --token "$VERCEL_TOKEN")"
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
@@ -152,7 +148,6 @@ jobs:
         run: pnpm build:saas-frontend
 
       - name: Link Vercel project
-        working-directory: apps/saas/frontend
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -165,7 +160,6 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        working-directory: apps/saas/frontend
         run: npx vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
 
       - name: Build Vercel production output
@@ -173,7 +167,6 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        working-directory: apps/saas/frontend
         run: npx vercel@latest build --prod --token "$VERCEL_TOKEN"
 
       - name: Deploy production to Vercel
@@ -181,7 +174,6 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        working-directory: apps/saas/frontend
         run: npx vercel@latest deploy --prebuilt --prod --token "$VERCEL_TOKEN"
 
       - name: Production deployment summary
