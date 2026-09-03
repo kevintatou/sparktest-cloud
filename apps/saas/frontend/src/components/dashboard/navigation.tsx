@@ -38,6 +38,7 @@ const navigationGroups = [
       { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { key: 'definitions', label: 'Definitions', icon: FileText },
       { key: 'suites', label: 'Test Suites', icon: Boxes },
+      { key: 'executors', label: 'Executors', icon: Server },
       { key: 'runs', label: 'Runs', icon: Play },
     ],
   },
@@ -45,7 +46,6 @@ const navigationGroups = [
     title: 'Cloud',
     items: [
       { key: 'agents', label: 'Agents', icon: Radio },
-      { key: 'executors', label: 'Executors', icon: Server },
     ],
   },
   {
