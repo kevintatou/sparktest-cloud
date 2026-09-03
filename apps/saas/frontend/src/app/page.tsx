@@ -20,6 +20,7 @@ import { UpdatePasswordForm } from '@/components/auth/update-password-form';
 import { MarketingPage } from '@/components/marketing/marketing-page';
 import { useAuth } from '@/contexts/auth-context';
 import { FeatureRequestCard } from '@/components/dashboard/feature-request-card';
+import { ResourceSections } from '@/components/dashboard/resource-sections';
 
 export default function Home() {
   return (
@@ -55,11 +56,17 @@ function HomeContent() {
   const {
     definitions: testDefinitions,
     runs: testRuns,
+    executors,
+    suites,
     loading,
     createDefinition,
     runTest,
     deleteDefinition,
     deleteRun,
+    createExecutor,
+    deleteExecutor,
+    createSuite,
+    deleteSuite,
   } = useStorage();
 
   // Supabase password recovery links can land at /#type=recovery.
@@ -192,6 +199,21 @@ function HomeContent() {
           handleRunTest={handleRunDefinition}
           handleDeleteTest={handleDeleteDefinition}
           deleteRun={deleteRun}
+        />
+      );
+    }
+
+    if (['suites', 'executors'].includes(activeTab)) {
+      return (
+        <ResourceSections
+          activeTab={activeTab}
+          definitions={testDefinitions}
+          executors={executors}
+          suites={suites}
+          createExecutor={createExecutor}
+          deleteExecutor={deleteExecutor}
+          createSuite={createSuite}
+          deleteSuite={deleteSuite}
         />
       );
     }

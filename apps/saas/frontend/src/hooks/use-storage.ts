@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Definition, Run } from '@tatou/core';
+import { Definition, Executor, Run, Suite } from '@tatou/core';
 import { API_BASE_URL } from '@/lib/api-config';
 import { supabase } from '@/lib/supabase';
 import { capturePostHog } from '@/lib/posthog';
@@ -34,6 +34,29 @@ type ApiRun = {
   queued_at: string;
   started_at?: string | null;
   finished_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ApiExecutor = {
+  id: string;
+  project_id: string;
+  name: string;
+  executor_type: string;
+  image?: string | null;
+  config?: Record<string, unknown>;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type ApiSuite = {
+  id: string;
+  project_id: string;
+  name: string;
+  description?: string;
+  test_definition_ids: string[];
+  execution_mode: 'sequential' | 'parallel';
   created_at: string;
   updated_at: string;
 };
@@ -138,9 +161,32 @@ function fromRun(definitionId: string): ApiRun {
   };
 }
 
+function toExecutor(executor: ApiExecutor): Executor {
+  return {
+    id: executor.id,
+    name: executor.name,
+    image: executor.image || executor.executor_type,
+    description: executor.config?.description as string || '',
+    createdAt: executor.created_at,
+  };
+}
+
+function toSuite(suite: ApiSuite): Suite {
+  return {
+    id: suite.id,
+    name: suite.name,
+    description: suite.description,
+    testDefinitionIds: suite.test_definition_ids,
+    createdAt: suite.created_at,
+    executionMode: suite.execution_mode,
+  };
+}
+
 export function useStorage() {
   const [definitions, setDefinitions] = useState<Definition[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
+  const [executors, setExecutors] = useState<Executor[]>([]);
+  const [suites, setSuites] = useState<Suite[]>([]);
   const [loading, setLoading] = useState(true);
   const trackedTerminalRuns = useRef(new Set<string>());
 
@@ -151,16 +197,22 @@ export function useStorage() {
       if (!session) {
         setDefinitions([]);
         setRuns([]);
+        setExecutors([]);
+        setSuites([]);
         return;
       }
-      const [apiDefinitions, apiRuns] = await Promise.all([
+      const [apiDefinitions, apiRuns, apiExecutors, apiSuites] = await Promise.all([
         fetchApi<ApiDefinition[]>('/api/test-definitions'),
         fetchApi<ApiRun[]>('/api/test-runs'),
+        fetchApi<ApiExecutor[]>('/api/executors'),
+        fetchApi<ApiSuite[]>('/api/test-suites'),
       ]);
       const nextDefinitions = apiDefinitions.map(toDefinition);
 
       setDefinitions(nextDefinitions);
       setRuns(apiRuns.map((run) => toRun(run, nextDefinitions)));
+      setExecutors(apiExecutors.map(toExecutor));
+      setSuites(apiSuites.map(toSuite));
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -263,14 +315,70 @@ export function useStorage() {
     setRuns((prev) => prev.filter((run) => run.id !== id));
   };
 
+  const createExecutor = async (data: {
+    name: string;
+    executorType: string;
+    image?: string;
+    description?: string;
+  }) => {
+    const created = await fetchApi<ApiExecutor>('/api/executors', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: data.name,
+        executor_type: data.executorType,
+        image: data.image || null,
+        config: data.description ? { description: data.description } : {},
+      }),
+    });
+    const executor = toExecutor(created);
+    setExecutors((prev) => [executor, ...prev]);
+    return executor;
+  };
+
+  const deleteExecutor = async (id: string) => {
+    await fetchApi<void>(`/api/executors/${id}`, { method: 'DELETE' });
+    setExecutors((prev) => prev.filter((executor) => executor.id !== id));
+  };
+
+  const createSuite = async (data: {
+    name: string;
+    description?: string;
+    executionMode: Suite['executionMode'];
+    testDefinitionIds: string[];
+  }) => {
+    const created = await fetchApi<ApiSuite>('/api/test-suites', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: data.name,
+        description: data.description || null,
+        execution_mode: data.executionMode,
+        test_definition_ids: data.testDefinitionIds,
+      }),
+    });
+    const suite = toSuite(created);
+    setSuites((prev) => [suite, ...prev]);
+    return suite;
+  };
+
+  const deleteSuite = async (id: string) => {
+    await fetchApi<void>(`/api/test-suites/${id}`, { method: 'DELETE' });
+    setSuites((prev) => prev.filter((suite) => suite.id !== id));
+  };
+
   return {
     definitions,
     runs,
+    executors,
+    suites,
     loading,
     createDefinition,
     updateDefinition,
     runTest,
     deleteDefinition,
     deleteRun,
+    createExecutor,
+    deleteExecutor,
+    createSuite,
+    deleteSuite,
   };
 }

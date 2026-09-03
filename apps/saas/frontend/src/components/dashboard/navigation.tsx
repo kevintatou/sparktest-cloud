@@ -8,6 +8,8 @@ import {
   FileText,
   Play,
   Radio,
+  Boxes,
+  Server,
   ChevronRight,
   Settings,
 } from 'lucide-react';
@@ -17,6 +19,8 @@ export type NavigationKey =
   | 'definitions'
   | 'runs'
   | 'agents'
+  | 'suites'
+  | 'executors'
   | 'settings';
 
 export interface NavigationProps {
@@ -33,12 +37,16 @@ const navigationGroups = [
     items: [
       { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { key: 'definitions', label: 'Definitions', icon: FileText },
+      { key: 'suites', label: 'Test Suites', icon: Boxes },
       { key: 'runs', label: 'Runs', icon: Play },
     ],
   },
   {
     title: 'Cloud',
-    items: [{ key: 'agents', label: 'Agents', icon: Radio }],
+    items: [
+      { key: 'agents', label: 'Agents', icon: Radio },
+      { key: 'executors', label: 'Executors', icon: Server },
+    ],
   },
   {
     title: 'Platform',

@@ -13,17 +13,17 @@ export function FeatureRequestCard() {
             <Badge variant="secondary">Free Beta</Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Tell us which capability would make SparkTest useful for your team.
+            Tell us about a capability or bug that would make SparkTest better.
           </p>
         </div>
         <Button asChild className="shrink-0">
           <a
-            href="https://github.com/kevintatou/sparktest-cloud/issues/new?template=feature_request.md&title=Feature%20request%3A%20"
+            href="https://github.com/kevintatou/sparktest-cloud/issues/new?title=Request%3A%20"
             target="_blank"
             rel="noreferrer"
           >
             <MessageSquare className="h-4 w-4" />
-            Send feature request
+            Send request
           </a>
         </Button>
       </CardContent>
