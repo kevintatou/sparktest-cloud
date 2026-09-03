@@ -1,24 +1,38 @@
-name: Deploy Vercel Preview
+name: Deploy Vercel
 
 on:
   pull_request:
     branches: [main, develop]
     types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment target
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - production
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: vercel-preview-${{ github.event.pull_request.number || github.ref }}
+  group: vercel-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   deploy-preview:
-    name: Deploy preview
+    name: Deploy development preview
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'preview')
 
     steps:
       - name: Checkout code
@@ -50,6 +64,7 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: apps/saas/frontend
         run: npx vercel@latest pull --yes --environment=preview --token "$VERCEL_TOKEN"
 
       - name: Build Vercel output
@@ -57,6 +72,7 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: apps/saas/frontend
         run: npx vercel@latest build --token "$VERCEL_TOKEN"
 
       - name: Deploy preview to Vercel
@@ -66,6 +82,7 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: apps/saas/frontend
         run: |
           deployment_url="$(npx vercel@latest deploy --prebuilt --no-wait --token "$VERCEL_TOKEN")"
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
@@ -92,13 +109,13 @@ jobs:
 
       - name: Deployment summary
         run: |
-          echo "SparkTest Cloud preview deployed:"
+          echo "SparkTest Cloud development preview deployed:"
           echo "${{ steps.deploy.outputs.url }}"
 
   deploy-production:
     name: Deploy production
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production'
 
     steps:
       - name: Checkout code
@@ -130,6 +147,7 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: apps/saas/frontend
         run: npx vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
 
       - name: Build Vercel production output
@@ -137,6 +155,7 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: apps/saas/frontend
         run: npx vercel@latest build --prod --token "$VERCEL_TOKEN"
 
       - name: Deploy production to Vercel
@@ -144,6 +163,7 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: apps/saas/frontend
         run: npx vercel@latest deploy --prebuilt --prod --token "$VERCEL_TOKEN"
 
       - name: Production deployment summary
