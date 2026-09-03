@@ -84,7 +84,7 @@ export async function login(page: Page, credentials: Credentials) {
   await page.getByLabel('Password').fill(credentials.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(
-    page.getByRole('heading', { name: 'Welcome back' })
+    page.getByRole('heading', { name: 'Dashboard', exact: true })
   ).toBeVisible();
 
   const response = await profileSync;

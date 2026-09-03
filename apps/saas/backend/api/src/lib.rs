@@ -39,6 +39,12 @@ pub struct CheckoutResponse {
     pub checkout_url: String,
 }
 
+#[derive(Debug, Serialize)]
+struct BillingStatus {
+    plan_slug: String,
+    plan_name: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebhookEvent {
     #[serde(rename = "type")]
@@ -103,7 +109,8 @@ fn supabase_jwt_verifier() -> &'static SupabaseJwtVerifier {
     VERIFIER.get_or_init(|| {
         let supabase_url = std::env::var("SUPABASE_URL")
             .expect("SUPABASE_URL must be set to verify Supabase auth JWTs");
-        SupabaseJwtVerifier::new(&supabase_url)
+        let jwt_secret = std::env::var("SUPABASE_JWT_SECRET").ok();
+        SupabaseJwtVerifier::with_jwt_secret(&supabase_url, jwt_secret)
     })
 }
 
@@ -200,6 +207,7 @@ pub fn create_app(database: Database) -> Router {
         .route("/api/insights/flaky", get(list_flaky_tests))
         .route("/api/insights/flaky/:id", patch(update_flaky_test_status))
         .route("/api/billing/plans", get(list_plans))
+        .route("/api/billing/status", get(billing_status))
         .route("/api/billing/checkout", post(create_checkout_session))
         .route("/api/billing/webhook", post(handle_webhook))
         .layer(CorsLayer::permissive())
@@ -215,11 +223,22 @@ async fn human_context(headers: &HeaderMap, db: &Database) -> HumanContext {
     let user_id = jwt_claims
         .as_ref()
         .and_then(|claims| Uuid::parse_str(&claims.sub).ok());
-    let project_id = headers
+    let requested_project_id = headers
         .get("x-project-id")
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| Uuid::parse_str(value).ok())
-        .unwrap_or_else(|| db.default_project_id());
+        .and_then(|value| Uuid::parse_str(value).ok());
+    let project_id = match requested_project_id {
+        Some(project_id) => project_id,
+        None => match user_id {
+            Some(user_id) => db
+                .project_id_for_profile(user_id)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| db.default_project_id()),
+            None => db.default_project_id(),
+        },
+    };
 
     HumanContext {
         user_id,
@@ -676,9 +695,7 @@ async fn enforce_project_limit(db: &Database) -> Result<(), StatusCode> {
         .count_projects()
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if count >= 1
-        && std::env::var("SPARKTEST_PLAN").unwrap_or_else(|_| "free".to_string()) == "free"
-    {
+    if count >= 1 && current_plan_slug() == "free" {
         return Err(StatusCode::PAYMENT_REQUIRED);
     }
     Ok(())
@@ -689,12 +706,15 @@ async fn enforce_agent_limit(db: &Database, project_id: Uuid) -> Result<(), Stat
         .count_active_agent_tokens(project_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if count >= 1
-        && std::env::var("SPARKTEST_PLAN").unwrap_or_else(|_| "free".to_string()) == "free"
-    {
+    let max_tokens = if current_plan_slug() == "pro" { 10 } else { 1 };
+    if count >= max_tokens {
         return Err(StatusCode::PAYMENT_REQUIRED);
     }
     Ok(())
+}
+
+fn current_plan_slug() -> String {
+    std::env::var("SPARKTEST_PLAN").unwrap_or_else(|_| "free".to_string())
 }
 
 async fn revoke_agent_token(
@@ -717,7 +737,7 @@ async fn revoke_agent_token(
         )
         .await;
 
-    db.revoke_agent_token(id)
+    db.revoke_agent_token(ctx.project_id, id)
         .await
         .map(|_| StatusCode::NO_CONTENT)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
@@ -1496,6 +1516,25 @@ async fn list_plans(State(db): State<AppState>) -> Result<Json<Vec<Plan>>, Statu
         .await
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn billing_status(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<BillingStatus>, StatusCode> {
+    let ctx = human_context(&headers, &db).await;
+    ensure_project_access(&db, &ctx).await?;
+    let plan_slug = std::env::var("SPARKTEST_PLAN").unwrap_or_else(|_| "free".to_string());
+    let plan = db
+        .get_plan_by_slug(&plan_slug)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(BillingStatus {
+        plan_name: if plan.slug == "pro" { "Pro" } else { "Free" }.to_string(),
+        plan_slug: plan.slug,
+    }))
 }
 
 async fn create_checkout_session(

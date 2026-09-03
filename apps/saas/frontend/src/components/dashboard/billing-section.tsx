@@ -10,7 +10,7 @@ import { Plan } from '@/lib/api';
 import { Check, Loader2 } from 'lucide-react';
 
 export function BillingSection() {
-  const { plans, loading, error, createCheckoutSession } = useBilling();
+  const { plans, status, loading, error, createCheckoutSession } = useBilling();
   const { toast } = useToast();
   const [upgrading, setUpgrading] = useState<string | null>(null);
 
@@ -19,17 +19,17 @@ export function BillingSection() {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('success') === 'true') {
       toast({
-        title: "Subscription activated!",
-        description: "Welcome to your new plan. Your upgrade is now active.",
+        title: 'Subscription activated!',
+        description: 'Welcome to your new plan. Your upgrade is now active.',
       });
       // Clean up URL
       window.history.replaceState({}, '', window.location.pathname);
     }
     if (urlParams.get('canceled') === 'true') {
       toast({
-        title: "Checkout canceled",
-        description: "Your upgrade was canceled. You can try again anytime.",
-        variant: "destructive",
+        title: 'Checkout canceled',
+        description: 'Your upgrade was canceled. You can try again anytime.',
+        variant: 'destructive',
       });
       // Clean up URL
       window.history.replaceState({}, '', window.location.pathname);
@@ -43,9 +43,9 @@ export function BillingSection() {
     } catch (error) {
       console.error('Upgrade failed:', error);
       toast({
-        title: "Upgrade failed",
-        description: "Failed to start checkout process. Please try again.",
-        variant: "destructive",
+        title: 'Upgrade failed',
+        description: 'Failed to start checkout process. Please try again.',
+        variant: 'destructive',
       });
     } finally {
       setUpgrading(null);
@@ -59,32 +59,18 @@ export function BillingSection() {
 
   const formatFeatures = (features: Record<string, any>) => {
     const featureList: string[] = [];
-    
+
     if (features.max_projects) {
-      featureList.push(`${features.max_projects} project${features.max_projects === 1 ? '' : 's'}`);
+      featureList.push(
+        `${features.max_projects} project${features.max_projects === 1 ? '' : 's'}`
+      );
     }
     if (features.cloud_agent_tokens) {
-      featureList.push(`${features.cloud_agent_tokens} cloud agent token${features.cloud_agent_tokens === 1 ? '' : 's'}`);
+      featureList.push(
+        `${features.cloud_agent_tokens} active agent token${features.cloud_agent_tokens === 1 ? '' : 's'}`
+      );
     }
-    if (features.seats) {
-      featureList.push(`${features.seats} seat${features.seats === 1 ? '' : 's'}`);
-    }
-    if (features.log_retention_days) {
-      featureList.push(`${features.log_retention_days} days log retention`);
-    }
-    if (features.result_storage_gb) {
-      featureList.push(`${features.result_storage_gb}GB result storage`);
-    }
-    if (features.support) {
-      featureList.push(`${features.support} support`);
-    }
-    if (features.private_cloud_agents) {
-      featureList.push('Private cloud agents');
-    }
-    if (features.audit_log) {
-      featureList.push('Audit log');
-    }
-    
+
     return featureList;
   };
 
@@ -101,11 +87,10 @@ export function BillingSection() {
     return (
       <Card>
         <CardContent className="text-center py-8">
-          <p className="text-muted-foreground mb-4">Failed to load billing plans</p>
-          <Button 
-            variant="outline" 
-            onClick={() => window.location.reload()}
-          >
+          <p className="text-muted-foreground mb-4">
+            Failed to load billing plans
+          </p>
+          <Button variant="outline" onClick={() => window.location.reload()}>
             Try Again
           </Button>
         </CardContent>
@@ -114,78 +99,81 @@ export function BillingSection() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      {plans.map((plan) => (
-        <Card key={plan.id} className={plan.slug === 'pro' ? 'border-primary' : ''}>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="capitalize">{plan.slug} Plan</CardTitle>
-              {plan.slug === 'pro' && (
-                <Badge variant="default">Popular</Badge>
-              )}
-            </div>
-            <div className="text-3xl font-bold">
-              {formatPrice(plan.price_cents)}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <ul className="space-y-2">
-                {formatFeatures(plan.features).map((feature, index) => (
-                  <li key={index} className="flex items-center text-sm">
-                    <Check className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-              
-              {plan.price_cents > 0 ? (
-                <Button 
-                  className="w-full" 
-                  onClick={() => handleUpgrade(plan.slug)}
-                  disabled={upgrading === plan.slug}
-                >
-                  {upgrading === plan.slug ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Upgrading...
-                    </>
-                  ) : (
-                    'Upgrade'
-                  )}
-                </Button>
-              ) : (
-                <Button variant="outline" className="w-full" disabled>
-                  Current Plan
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-      
-      {/* Usage Summary Card */}
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle>Cloud Usage</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="flex items-center justify-between">
-              <span>Agent Tokens</span>
-              <span className="font-medium">1</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Seats</span>
-              <span className="font-medium">1</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Storage Used</span>
-              <span className="font-medium">2.4GB</span>
-            </div>
+    <div className="space-y-6">
+      <Card className="border-primary/40 bg-primary/5">
+        <CardContent className="flex flex-col gap-1 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              Current project plan
+            </p>
+            <p className="text-2xl font-bold">
+              {status?.plan_name ?? 'Free'} Plan
+            </p>
           </div>
+          <Badge variant="outline">
+            {status?.plan_slug === 'pro' ? 'Active' : 'Included'}
+          </Badge>
         </CardContent>
       </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {plans
+          .filter((plan) => plan.slug === 'free')
+          .map((plan) => (
+            <Card
+              key={plan.id}
+              className={plan.slug === 'pro' ? 'border-primary' : ''}
+            >
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="capitalize">{plan.slug} Plan</CardTitle>
+                  {plan.slug === 'pro' && (
+                    <Badge variant="default">Popular</Badge>
+                  )}
+                </div>
+                <div className="text-3xl font-bold">
+                  {formatPrice(plan.price_cents)}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <ul className="space-y-2">
+                    {formatFeatures(plan.features).map((feature, index) => (
+                      <li key={index} className="flex items-center text-sm">
+                        <Check className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {status?.plan_slug === plan.slug ? (
+                    <Button variant="outline" className="w-full" disabled>
+                      Included
+                    </Button>
+                  ) : plan.price_cents > 0 ? (
+                    <Button
+                      className="w-full"
+                      onClick={() => handleUpgrade(plan.slug)}
+                      disabled={upgrading === plan.slug}
+                    >
+                      {upgrading === plan.slug ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Upgrading...
+                        </>
+                      ) : (
+                        'Upgrade'
+                      )}
+                    </Button>
+                  ) : (
+                    <Button variant="outline" className="w-full" disabled>
+                      Current Plan
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+      </div>
     </div>
   );
 }

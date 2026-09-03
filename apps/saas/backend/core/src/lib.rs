@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx::{postgres::PgPoolOptions, types::Json, PgPool};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -156,6 +157,7 @@ pub struct AgentToken {
     pub id: Uuid,
     pub project_id: Uuid,
     pub name: String,
+    #[serde(skip_serializing)]
     pub token_hash: String,
     pub last_used_at: Option<DateTime<Utc>>,
     pub revoked_at: Option<DateTime<Utc>>,
@@ -507,17 +509,40 @@ impl Database {
             .bind(&name)
             .fetch_one(pool)
             .await?;
-            sqlx::query(
-                r#"
-                insert into project_members (project_id, profile_id, role)
-                values ($1, $2, 'owner')
-                on conflict (project_id, profile_id) do nothing
-                "#,
+
+            let project_exists = sqlx::query_scalar::<_, bool>(
+                "select exists(select 1 from project_members where profile_id = $1)",
             )
-            .bind(self.default_project_id)
             .bind(id)
-            .execute(pool)
+            .fetch_one(pool)
             .await?;
+            if !project_exists {
+                let project_name = format!("{}'s Project", name.as_deref().unwrap_or(&email));
+                let project_slug = format!("user-{}", id.simple());
+                let project_id = sqlx::query_scalar::<_, Uuid>(
+                    r#"
+                    insert into projects (name, slug)
+                    values ($1, $2)
+                    on conflict (slug) do update set updated_at = now()
+                    returning id
+                    "#,
+                )
+                .bind(project_name)
+                .bind(project_slug)
+                .fetch_one(pool)
+                .await?;
+                sqlx::query(
+                    r#"
+                    insert into project_members (project_id, profile_id, role)
+                    values ($1, $2, 'owner')
+                    on conflict (project_id, profile_id) do nothing
+                    "#,
+                )
+                .bind(project_id)
+                .bind(id)
+                .execute(pool)
+                .await?;
+            }
             return Ok(profile);
         }
 
@@ -538,19 +563,52 @@ impl Database {
             updated_at: now,
         };
         store.profiles.push(profile.clone());
-        if !store
+        let project_id = Uuid::new_v4();
+        store.projects.push(Project {
+            id: project_id,
+            name: format!(
+                "{}'s Project",
+                profile.name.as_deref().unwrap_or(&profile.email)
+            ),
+            slug: format!("user-{}", id.simple()),
+            created_at: now,
+            updated_at: now,
+        });
+        store.members.push(ProjectMember {
+            project_id,
+            profile_id: id,
+            role: "owner".to_string(),
+            created_at: now,
+        });
+        Ok(profile)
+    }
+
+    pub async fn project_id_for_profile(
+        &self,
+        profile_id: Uuid,
+    ) -> Result<Option<Uuid>, anyhow::Error> {
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query_scalar::<_, Uuid>(
+                r#"
+                select project_id
+                from project_members
+                where profile_id = $1
+                order by created_at desc
+                limit 1
+                "#,
+            )
+            .bind(profile_id)
+            .fetch_optional(pool)
+            .await?);
+        }
+
+        let store = self.store.lock().unwrap();
+        Ok(store
             .members
             .iter()
-            .any(|m| m.profile_id == id && m.project_id == self.default_project_id)
-        {
-            store.members.push(ProjectMember {
-                project_id: self.default_project_id,
-                profile_id: id,
-                role: "owner".to_string(),
-                created_at: now,
-            });
-        }
-        Ok(profile)
+            .rev()
+            .find(|member| member.profile_id == profile_id)
+            .map(|member| member.project_id))
     }
 
     pub async fn list_projects(
@@ -2198,7 +2256,7 @@ impl Database {
                 set agent_id = $2, status = 'running', started_at = now(), updated_at = now()
                 where id = (
                     select tr.id from test_runs tr
-                    left join agents a on a.id = $2
+                    join agents a on a.id = $2
                     where tr.project_id = $1 and tr.status = 'queued' and tr.agent_id is null
                       and (tr.target_environment_id is null or tr.target_environment_id = a.environment_id)
                     order by tr.queued_at asc
@@ -2618,17 +2676,28 @@ impl Database {
             .count())
     }
 
-    pub async fn revoke_agent_token(&self, id: Uuid) -> Result<(), anyhow::Error> {
+    pub async fn revoke_agent_token(
+        &self,
+        project_id: Uuid,
+        id: Uuid,
+    ) -> Result<(), anyhow::Error> {
         if let Some(pool) = &self.pool {
-            sqlx::query("update agent_tokens set revoked_at = now() where id = $1")
-                .bind(id)
-                .execute(pool)
-                .await?;
+            sqlx::query(
+                "update agent_tokens set revoked_at = now() where id = $1 and project_id = $2",
+            )
+            .bind(id)
+            .bind(project_id)
+            .execute(pool)
+            .await?;
             return Ok(());
         }
 
         let mut store = self.store.lock().unwrap();
-        if let Some(token) = store.agent_tokens.iter_mut().find(|t| t.id == id) {
+        if let Some(token) = store
+            .agent_tokens
+            .iter_mut()
+            .find(|t| t.id == id && t.project_id == project_id)
+        {
             token.revoked_at = Some(Utc::now());
         }
         Ok(())
@@ -2640,15 +2709,17 @@ impl Database {
     ) -> Result<Option<AgentToken>, anyhow::Error> {
         if let Some(pool) = &self.pool {
             let token_hash = hash_token(token);
+            let legacy_token_hash = legacy_hash_token(token);
             let record = sqlx::query_as::<_, AgentToken>(
                 r#"
                 update agent_tokens
                 set last_used_at = now()
-                where token_hash = $1 and revoked_at is null
+                where token_hash in ($1, $2) and revoked_at is null
                 returning id, project_id, name, token_hash, last_used_at, revoked_at, created_at
                 "#,
             )
             .bind(token_hash)
+            .bind(legacy_token_hash)
             .fetch_optional(pool)
             .await?;
             return Ok(record);
@@ -2656,11 +2727,11 @@ impl Database {
 
         let mut store = self.store.lock().unwrap();
         let token_hash = hash_token(token);
-        if let Some(record) = store
-            .agent_tokens
-            .iter_mut()
-            .find(|t| t.token_hash == token_hash && t.revoked_at.is_none())
-        {
+        let legacy_token_hash = legacy_hash_token(token);
+        if let Some(record) = store.agent_tokens.iter_mut().find(|t| {
+            (t.token_hash == token_hash || t.token_hash == legacy_token_hash)
+                && t.revoked_at.is_none()
+        }) {
             record.last_used_at = Some(Utc::now());
             return Ok(Some(record.clone()));
         }
@@ -2887,6 +2958,11 @@ impl Database {
 }
 
 pub fn hash_token(token: &str) -> String {
+    let digest = Sha256::digest(token.as_bytes());
+    hex::encode(digest)
+}
+
+fn legacy_hash_token(token: &str) -> String {
     let mut hasher = DefaultHasher::new();
     token.hash(&mut hasher);
     format!("{:x}", hasher.finish())
@@ -3167,6 +3243,7 @@ pub struct SupabaseClaims {
 #[derive(Clone)]
 pub struct SupabaseJwtVerifier {
     jwks_url: String,
+    jwt_secret: Option<String>,
     cache: Arc<Mutex<Option<jsonwebtoken::jwk::JwkSet>>>,
 }
 
@@ -3174,12 +3251,22 @@ impl SupabaseJwtVerifier {
     /// `supabase_url` is the project's base URL, e.g.
     /// `https://xxxx.supabase.co` (same value as `NEXT_PUBLIC_SUPABASE_URL`).
     pub fn new(supabase_url: &str) -> Self {
+        Self::with_jwt_secret(supabase_url, None)
+    }
+
+    pub fn with_jwt_secret(supabase_url: &str, jwt_secret: Option<String>) -> Self {
         let jwks_url = format!(
             "{}/auth/v1/.well-known/jwks.json",
             supabase_url.trim_end_matches('/')
         );
+        let jwt_secret = jwt_secret.filter(|secret| {
+            let trimmed = secret.trim();
+            !trimmed.is_empty() && trimmed != "your-supabase-jwt-secret"
+        });
+
         Self {
             jwks_url,
+            jwt_secret,
             cache: Arc::new(Mutex::new(None)),
         }
     }
@@ -3204,14 +3291,28 @@ impl SupabaseJwtVerifier {
 
     pub async fn verify(&self, token: &str) -> Option<SupabaseClaims> {
         let header = jsonwebtoken::decode_header(token).ok()?;
-        let kid = header.kid?;
-        let jwk = self.find_key(&kid).await?;
-        let decoding_key = jsonwebtoken::DecodingKey::from_jwk(&jwk).ok()?;
-        let mut validation = jsonwebtoken::Validation::new(header.alg);
+
+        if let Some(kid) = header.kid.as_deref() {
+            if let Some(jwk) = self.find_key(kid).await {
+                if let Ok(decoding_key) = jsonwebtoken::DecodingKey::from_jwk(&jwk) {
+                    let mut validation = jsonwebtoken::Validation::new(header.alg);
+                    validation.validate_aud = false;
+                    if let Ok(data) =
+                        jsonwebtoken::decode::<SupabaseClaims>(token, &decoding_key, &validation)
+                    {
+                        return Some(data.claims);
+                    }
+                }
+            }
+        }
+
+        let jwt_secret = self.jwt_secret.as_deref()?;
+        let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
         validation.validate_aud = false;
-        let data =
-            jsonwebtoken::decode::<SupabaseClaims>(token, &decoding_key, &validation).ok()?;
-        Some(data.claims)
+        let decoding_key = jsonwebtoken::DecodingKey::from_secret(jwt_secret.as_bytes());
+        jsonwebtoken::decode::<SupabaseClaims>(token, &decoding_key, &validation)
+            .ok()
+            .map(|data| data.claims)
     }
 }
 
@@ -3230,6 +3331,28 @@ mod tests {
         assert_eq!(plans.len(), 2);
         assert!(plans.iter().any(|p| p.slug == "free"));
         assert!(plans.iter().any(|p| p.slug == "pro"));
+    }
+
+    #[tokio::test]
+    async fn profiles_receive_private_projects() {
+        let db = Database::new("test://").await.unwrap();
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+
+        db.ensure_profile(first, "first@example.com".to_string(), None)
+            .await
+            .unwrap();
+        db.ensure_profile(second, "second@example.com".to_string(), None)
+            .await
+            .unwrap();
+
+        let first_project = db.project_id_for_profile(first).await.unwrap();
+        let second_project = db.project_id_for_profile(second).await.unwrap();
+        assert!(first_project.is_some());
+        assert!(second_project.is_some());
+        assert_ne!(first_project, second_project);
+        assert_ne!(first_project, Some(db.default_project_id()));
+        assert_ne!(second_project, Some(db.default_project_id()));
     }
 
     #[tokio::test]
@@ -4040,7 +4163,7 @@ mod tests {
         .await
         .unwrap();
 
-        db.revoke_agent_token(token.id).await.unwrap();
+        db.revoke_agent_token(project_id, token.id).await.unwrap();
         db.record_audit_log(
             project_id,
             None,
@@ -4331,5 +4454,61 @@ mod tests {
         let claims = verifier.verify("not.a.jwt").await;
 
         assert!(claims.is_none());
+    }
+
+    #[tokio::test]
+    async fn supabase_jwt_verifier_accepts_legacy_hs256_token() {
+        #[derive(Serialize)]
+        struct TestClaims {
+            sub: String,
+            email: String,
+            aud: String,
+            exp: usize,
+        }
+
+        let secret = "legacy-secret";
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+            &TestClaims {
+                sub: "22222222-2222-2222-2222-222222222222".to_string(),
+                email: "legacy@example.com".to_string(),
+                aud: "authenticated".to_string(),
+                exp: 4_102_444_800,
+            },
+            &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .unwrap();
+        let verifier =
+            SupabaseJwtVerifier::with_jwt_secret("http://127.0.0.1:1", Some(secret.to_string()));
+
+        let claims = verifier
+            .verify(&token)
+            .await
+            .expect("legacy HS256 tokens should verify with SUPABASE_JWT_SECRET");
+
+        assert_eq!(claims.sub, "22222222-2222-2222-2222-222222222222");
+        assert_eq!(claims.email.as_deref(), Some("legacy@example.com"));
+    }
+
+    #[tokio::test]
+    async fn supabase_jwt_verifier_rejects_legacy_hs256_without_secret() {
+        #[derive(Serialize)]
+        struct TestClaims {
+            sub: String,
+            exp: usize,
+        }
+
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+            &TestClaims {
+                sub: "33333333-3333-3333-3333-333333333333".to_string(),
+                exp: 4_102_444_800,
+            },
+            &jsonwebtoken::EncodingKey::from_secret(b"legacy-secret"),
+        )
+        .unwrap();
+        let verifier = SupabaseJwtVerifier::new("http://127.0.0.1:1");
+
+        assert!(verifier.verify(&token).await.is_none());
     }
 }

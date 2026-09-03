@@ -2,10 +2,14 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fs;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::sleep;
+
+const DEFAULT_CLOUD_URL: &str = "https://sparktest-cloud-api.onrender.com";
 
 #[derive(Debug, Serialize)]
 struct AgentRequest {
@@ -40,14 +44,60 @@ struct RunStatusRequest {
     error: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct AgentConfig {
+    cloud_url: String,
+    token: String,
+    name: Option<String>,
+}
+
+enum AgentCommand {
+    Connect {
+        token: String,
+        cloud_url: String,
+        name: Option<String>,
+    },
+    Run {
+        once: bool,
+    },
+    Status,
+    Version,
+    Help,
+    Disconnect,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    match parse_command(std::env::args().skip(1).collect())? {
+        AgentCommand::Connect {
+            token,
+            cloud_url,
+            name,
+        } => connect(&cloud_url, &token, name).await?,
+        AgentCommand::Status => status().await?,
+        AgentCommand::Version => println!("sparktest-agent {}", env!("CARGO_PKG_VERSION")),
+        AgentCommand::Help => print_help(),
+        AgentCommand::Disconnect => disconnect()?,
+        AgentCommand::Run { once } => run_agent(once).await?,
+    }
+    Ok(())
+}
+
+async fn run_agent(once: bool) -> Result<()> {
+    let config = load_config()?;
     let api_url = std::env::var("SPARKTEST_CLOUD_URL")
-        .unwrap_or_else(|_| "http://localhost:3001".to_string());
-    let token =
-        std::env::var("SPARKTEST_AGENT_TOKEN").context("SPARKTEST_AGENT_TOKEN is required")?;
-    let name = std::env::var("SPARKTEST_AGENT_NAME").unwrap_or_else(|_| hostname());
-    let once = std::env::var("SPARKTEST_AGENT_ONCE").ok().as_deref() == Some("1");
+        .ok()
+        .or_else(|| config.as_ref().map(|value| value.cloud_url.clone()))
+        .unwrap_or_else(|| DEFAULT_CLOUD_URL.to_string());
+    let token = std::env::var("SPARKTEST_AGENT_TOKEN")
+        .ok()
+        .or_else(|| config.as_ref().map(|value| value.token.clone()))
+        .context("No agent token configured. Run `sparktest-agent connect <token>` first")?;
+    let name = std::env::var("SPARKTEST_AGENT_NAME")
+        .ok()
+        .or_else(|| config.and_then(|value| value.name))
+        .unwrap_or_else(|| hostname());
+    let once = once || std::env::var("SPARKTEST_AGENT_ONCE").ok().as_deref() == Some("1");
     let interval = std::env::var("SPARKTEST_AGENT_POLL_SECONDS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
@@ -67,6 +117,137 @@ async fn main() -> Result<()> {
         sleep(Duration::from_secs(interval)).await;
     }
 
+    Ok(())
+}
+
+async fn connect(cloud_url: &str, token: &str, name: Option<String>) -> Result<()> {
+    let client = Client::new();
+    let agent_name = name.unwrap_or_else(hostname);
+    check_in(&client, cloud_url, token, &agent_name)
+        .await
+        .context("Could not authenticate agent token with SparkTest Cloud")?;
+    save_config(&AgentConfig {
+        cloud_url: cloud_url.trim_end_matches('/').to_string(),
+        token: token.to_string(),
+        name: Some(agent_name.clone()),
+    })?;
+    println!(
+        "Connected {agent_name} to {}",
+        cloud_url.trim_end_matches('/')
+    );
+    println!("Configuration saved. Run `sparktest-agent run` to start polling.");
+    Ok(())
+}
+
+async fn status() -> Result<()> {
+    let config = load_config()?.context("No agent is connected")?;
+    let client = Client::new();
+    let name = config.name.clone().unwrap_or_else(hostname);
+    check_in(&client, &config.cloud_url, &config.token, &name).await?;
+    println!("Agent {name} is online at {}", config.cloud_url);
+    Ok(())
+}
+
+fn disconnect() -> Result<()> {
+    let path = config_path()?;
+    if path.exists() {
+        fs::remove_file(path)?;
+        println!("Agent disconnected.");
+    } else {
+        println!("No agent configuration found.");
+    }
+    Ok(())
+}
+
+fn parse_command(args: Vec<String>) -> Result<AgentCommand> {
+    let Some(command) = args.first().map(String::as_str) else {
+        if std::env::var("SPARKTEST_AGENT_TOKEN").is_ok() {
+            return Ok(AgentCommand::Run { once: false });
+        }
+        return Ok(AgentCommand::Run { once: false });
+    };
+
+    match command {
+        "connect" => {
+            let token = args
+                .get(1)
+                .context("Usage: sparktest-agent connect <token>")?;
+            let mut cloud_url = std::env::var("SPARKTEST_CLOUD_URL")
+                .unwrap_or_else(|_| DEFAULT_CLOUD_URL.to_string());
+            let mut name = std::env::var("SPARKTEST_AGENT_NAME").ok();
+            let mut index = 2;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--url" => {
+                        index += 1;
+                        cloud_url = args.get(index).context("--url requires a value")?.clone();
+                    }
+                    "--name" => {
+                        index += 1;
+                        name = Some(args.get(index).context("--name requires a value")?.clone());
+                    }
+                    value => anyhow::bail!("Unknown connect option: {value}"),
+                }
+                index += 1;
+            }
+            Ok(AgentCommand::Connect {
+                token: token.clone(),
+                cloud_url,
+                name,
+            })
+        }
+        "run" => Ok(AgentCommand::Run {
+            once: args.iter().any(|arg| arg == "--once"),
+        }),
+        "status" => Ok(AgentCommand::Status),
+        "version" | "--version" | "-V" => Ok(AgentCommand::Version),
+        "disconnect" => Ok(AgentCommand::Disconnect),
+        "--help" | "-h" => {
+            Ok(AgentCommand::Help)
+        }
+        value => anyhow::bail!("Unknown command: {value}. Use --help for usage."),
+    }
+}
+
+fn print_help() {
+    println!(
+        "sparktest-agent connect <token> [--url <url>] [--name <name>]\n\
+         sparktest-agent run [--once]\n\
+         sparktest-agent status\n\
+         sparktest-agent version\n\
+         sparktest-agent disconnect"
+    );
+}
+
+fn config_path() -> Result<PathBuf> {
+    #[cfg(target_os = "windows")]
+    let base = std::env::var_os("APPDATA").map(PathBuf::from);
+    #[cfg(not(target_os = "windows"))]
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")));
+    base.map(|path| path.join("sparktest").join("agent.json"))
+        .context("Could not determine a user config directory")
+}
+
+fn load_config() -> Result<Option<AgentConfig>> {
+    let path = config_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    Ok(Some(serde_json::from_str(&fs::read_to_string(path)?)?))
+}
+
+fn save_config(config: &AgentConfig) -> Result<()> {
+    let path = config_path()?;
+    let directory = path.parent().context("Invalid agent config path")?;
+    fs::create_dir_all(directory)?;
+    fs::write(&path, serde_json::to_vec_pretty(config)?)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+    }
     Ok(())
 }
 
