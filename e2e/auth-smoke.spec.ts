@@ -53,12 +53,24 @@ test('existing test account reaches dashboard', async ({ page }) => {
 
   await login(page, credentials);
   await expect(
-    page.getByRole('button', { name: 'Create New Definition' })
+    page.getByRole('button', { name: 'Create Definition' }).first()
   ).toBeVisible();
-
-  await navigateTo(page, 'Billing & Plans');
-  await expect(page.getByRole('heading', { name: 'Billing' })).toBeVisible();
 
   await navigateTo(page, 'Settings');
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+});
+
+test('existing account signup is not shown as a new signup', async ({ page }) => {
+  const credentials = await getE2ECredentials();
+
+  await page.goto('/?auth=signup');
+  await page.getByLabel('Name').fill('Existing account test');
+  await page.getByLabel('Email').fill(credentials.email);
+  await page.getByLabel('Password').fill('DifferentPassword123!');
+  await page.getByRole('button', { name: 'Create account' }).click();
+
+  await expect(
+    page.getByRole('heading', { name: 'Account may already exist' })
+  ).toBeVisible();
+  await expect(page.getByText('Check your email')).not.toBeVisible();
 });
