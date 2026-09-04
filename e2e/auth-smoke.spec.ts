@@ -8,10 +8,16 @@ const e2ePassword = process.env.E2E_PASSWORD;
 test('auth entry points render and validate input', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: 'Run your tests. Anywhere.' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Start free' }).first()).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Run your tests. Anywhere.' })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Start free' }).first()
+  ).toBeVisible();
   await page.getByRole('link', { name: 'Start free' }).first().click();
-  await expect(page.getByRole('heading', { name: 'Create an account' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Create an account' })
+  ).toBeVisible();
   await expect(page.getByLabel('Email')).toBeVisible();
   await expect(page.getByLabel('Password')).toBeVisible();
 
@@ -45,6 +51,44 @@ test('invalid login returns an auth error', async ({ page }) => {
   ).toBeVisible();
 });
 
+test('password recovery targets the current app with PKCE', async ({
+  page,
+}) => {
+  await page.route('**/auth/v1/recover**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '{}',
+    });
+  });
+
+  await page.goto('/?auth=login');
+  await page.getByRole('button', { name: 'Forgot password?' }).click();
+  await page.getByLabel('Email').fill('recovery-contract@example.com');
+
+  const recoveryRequest = page.waitForRequest((request) =>
+    new URL(request.url()).pathname.endsWith('/auth/v1/recover')
+  );
+  await page.getByRole('button', { name: 'Send reset link' }).click();
+
+  const request = await recoveryRequest;
+  const requestUrl = new URL(request.url());
+  const body = request.postDataJSON();
+
+  expect(requestUrl.searchParams.get('redirect_to')).toBe(
+    `${new URL(page.url()).origin}/reset-password`
+  );
+  expect(body).toMatchObject({
+    email: 'recovery-contract@example.com',
+    code_challenge_method: 's256',
+  });
+  expect(body.code_challenge).toEqual(expect.any(String));
+  expect(body.code_challenge.length).toBeGreaterThan(20);
+  await expect(
+    page.getByRole('heading', { name: 'Check your email' })
+  ).toBeVisible();
+});
+
 test('existing test account reaches dashboard', async ({ page }) => {
   const credentials =
     e2eEmail && e2ePassword
@@ -60,7 +104,9 @@ test('existing test account reaches dashboard', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
 });
 
-test('existing account signup is not shown as a new signup', async ({ page }) => {
+test('existing account signup is not shown as a new signup', async ({
+  page,
+}) => {
   const credentials = await getE2ECredentials();
 
   await page.goto('/?auth=signup');
