@@ -48,7 +48,14 @@ function getAppOrigin() {
 export function isExistingSignupResponse(
   response: AuthResponse
 ) {
-  return response.error === null && response.data.user?.identities?.length === 0;
+  if (response.error || response.data.session) {
+    return false;
+  }
+
+  return (
+    response.data.user === null ||
+    response.data.user.identities?.length === 0
+  );
 }
 
 async function syncProfile(session: Session | null) {

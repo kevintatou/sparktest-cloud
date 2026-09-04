@@ -2,6 +2,18 @@ import { isExistingSignupResponse } from '@/contexts/auth-context';
 import type { AuthResponse } from '@supabase/supabase-js';
 
 describe('Supabase signup response handling', () => {
+  it('recognizes the null-user response returned for an existing account', () => {
+    const response: AuthResponse = {
+      data: {
+        user: null,
+        session: null,
+      },
+      error: null,
+    };
+
+    expect(isExistingSignupResponse(response)).toBe(true);
+  });
+
   it('recognizes the obfuscated response for an existing confirmed user', () => {
     const response: AuthResponse = {
       data: {
