@@ -29,6 +29,7 @@ interface AuthContextValue extends AuthState {
     password: string,
     name?: string
   ) => Promise<{ error: AuthError | null }>;
+  resendConfirmation: (email: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
 }
@@ -133,6 +134,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }, []);
 
+  const resendConfirmation = useCallback(async (email: string) => {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: {
+        emailRedirectTo: getAppOrigin(),
+      },
+    });
+    return { error };
+  }, []);
+
   const resetPassword = useCallback(async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
@@ -142,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ ...state, signIn, signUp, signOut, resetPassword }}
+      value={{ ...state, signIn, signUp, signOut, resetPassword, resendConfirmation }}
     >
       {children}
     </AuthContext.Provider>

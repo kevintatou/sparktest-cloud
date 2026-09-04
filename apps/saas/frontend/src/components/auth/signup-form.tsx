@@ -13,7 +13,7 @@ interface SignUpFormProps {
 }
 
 export function SignUpForm({ onSwitchToLogin }: SignUpFormProps) {
-  const { signUp } = useAuth();
+  const { signUp, resendConfirmation } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +21,8 @@ export function SignUpForm({ onSwitchToLogin }: SignUpFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
 
   const passwordChecks = {
     length: password.length >= 8,
@@ -66,6 +68,20 @@ export function SignUpForm({ onSwitchToLogin }: SignUpFormProps) {
                 We sent a confirmation link to <strong>{email}</strong>.
                 Click the link to activate your account.
               </p>
+              <Button
+                variant="outline"
+                disabled={resending}
+                onClick={async () => {
+                  setResending(true);
+                  setResendMessage(null);
+                  const { error } = await resendConfirmation(email);
+                  setResendMessage(error ? error.message : 'Confirmation email sent again.');
+                  setResending(false);
+                }}
+              >
+                {resending ? 'Sending...' : 'Resend confirmation email'}
+              </Button>
+              {resendMessage && <p className="text-sm text-muted-foreground">{resendMessage}</p>}
               <Button variant="outline" onClick={onSwitchToLogin} className="mt-4">
                 Back to sign in
               </Button>
