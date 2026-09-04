@@ -14,14 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  Loader2,
-  Lock,
-  Zap,
-} from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, Loader2, Lock, Zap } from 'lucide-react';
 
 export function UpdatePasswordForm() {
   const router = useRouter();
@@ -41,7 +34,7 @@ export function UpdatePasswordForm() {
       number: /\d/.test(password),
       match: password.length > 0 && password === confirmPassword,
     }),
-    [confirmPassword, password],
+    [confirmPassword, password]
   );
 
   const passwordValid =
@@ -55,14 +48,6 @@ export function UpdatePasswordForm() {
 
     async function initializeRecoverySession() {
       setError(null);
-
-      const code = new URLSearchParams(window.location.search).get('code');
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error && !cancelled) {
-          setError(error.message);
-        }
-      }
 
       const hashParams = new URLSearchParams(window.location.hash.slice(1));
       const accessToken = hashParams.get('access_token');
