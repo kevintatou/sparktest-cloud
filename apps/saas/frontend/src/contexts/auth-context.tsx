@@ -9,6 +9,7 @@ import {
   ReactNode,
 } from 'react';
 import { Session, User, AuthError } from '@supabase/supabase-js';
+import type { AuthResponse } from '@supabase/supabase-js';
 import { API_BASE_URL } from '@/lib/api-config';
 import { supabase } from '@/lib/supabase';
 import { capturePostHog, identifyPostHog } from '@/lib/posthog';
@@ -28,7 +29,7 @@ interface AuthContextValue extends AuthState {
     email: string,
     password: string,
     name?: string
-  ) => Promise<{ error: AuthError | null }>;
+  ) => Promise<{ error: AuthError | null; existingAccount: boolean }>;
   resendConfirmation: (email: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
@@ -42,6 +43,12 @@ function getAppOrigin() {
   }
 
   return window.location.origin;
+}
+
+export function isExistingSignupResponse(
+  response: AuthResponse
+) {
+  return response.error === null && response.data.user?.identities?.length === 0;
 }
 
 async function syncProfile(session: Session | null) {
@@ -113,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = useCallback(
     async (email: string, password: string, name?: string) => {
       const appOrigin = getAppOrigin();
-      const { data, error } = await supabase.auth.signUp({
+      const response = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -121,11 +128,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ...(appOrigin ? { emailRedirectTo: appOrigin } : {}),
         },
       });
-      if (!error) {
+      // Supabase returns an obfuscated user with no identities for an existing
+      // confirmed account when email confirmation is enabled.
+      const existingAccount = isExistingSignupResponse(response);
+      if (!response.error && !existingAccount) {
         capturePostHog('signup_completed');
-        if (data.user) capturePostHog('project_created');
+        if (response.data.user) capturePostHog('project_created');
       }
-      return { error };
+      return { error: response.error, existingAccount };
     },
     []
   );

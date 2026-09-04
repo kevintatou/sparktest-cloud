@@ -21,6 +21,7 @@ export function SignUpForm({ onSwitchToLogin }: SignUpFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [existingAccount, setExistingAccount] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
 
@@ -41,9 +42,11 @@ export function SignUpForm({ onSwitchToLogin }: SignUpFormProps) {
     }
 
     setLoading(true);
-    const { error } = await signUp(email, password, name);
+    const { error, existingAccount: accountExists } = await signUp(email, password, name);
     if (error) {
       setError(error.message);
+    } else if (accountExists) {
+      setExistingAccount(true);
     } else {
       setSuccess(true);
     }
@@ -85,6 +88,31 @@ export function SignUpForm({ onSwitchToLogin }: SignUpFormProps) {
               <Button variant="outline" onClick={onSwitchToLogin} className="mt-4">
                 Back to sign in
               </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (existingAccount) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md space-y-6">
+          <div className="flex flex-col items-center space-y-2">
+            <div className="p-3 bg-primary/10 rounded-xl border">
+              <Zap className="h-8 w-8 text-primary" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight">SparkTest Cloud</h1>
+          </div>
+          <Card>
+            <CardContent className="py-8 text-center space-y-4">
+              <h2 className="text-xl font-semibold">Account may already exist</h2>
+              <p className="text-muted-foreground">
+                We could not create a new account with this email. Try signing in,
+                or use the password reset link if you do not remember your password.
+              </p>
+              <Button onClick={onSwitchToLogin}>Back to sign in</Button>
             </CardContent>
           </Card>
         </div>
