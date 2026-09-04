@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Radio, Clock, Cpu, Wifi, WifiOff } from 'lucide-react';
+import { Radio, Cpu, Wifi, WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Agent = {
@@ -32,20 +32,24 @@ function timeAgo(dateStr: string): string {
   return `${diffDay}d ago`;
 }
 
-function isOnline(lastSeenAt?: string): boolean {
+export function isAgentOnline(lastSeenAt?: string): boolean {
   if (!lastSeenAt) return false;
   const diffMs = Date.now() - new Date(lastSeenAt).getTime();
   return diffMs < 60_000; // Online if seen within 60s
 }
 
 export const AgentStatusCard: React.FC<AgentStatusCardProps> = ({ agent }) => {
-  const online = isOnline(agent.last_seen_at);
+  const online = isAgentOnline(agent.last_seen_at);
 
   return (
-    <Card className={cn(
-      "transition-all hover:shadow-md",
-      online ? "border-l-4 border-l-green-500" : "border-l-4 border-l-zinc-300 dark:border-l-zinc-600"
-    )}>
+    <Card
+      className={cn(
+        'transition-all hover:shadow-md',
+        online
+          ? 'border-l-4 border-l-green-500'
+          : 'border-l-4 border-l-zinc-300 dark:border-l-zinc-600'
+      )}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -55,14 +59,17 @@ export const AgentStatusCard: React.FC<AgentStatusCardProps> = ({ agent }) => {
           <Badge
             variant={online ? 'default' : 'secondary'}
             className={cn(
-              "text-xs",
-              online && "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+              'text-xs',
+              online &&
+                'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
             )}
           >
-            <span className={cn(
-              "mr-1.5 h-2 w-2 rounded-full inline-block",
-              online ? "bg-green-500 animate-pulse" : "bg-zinc-400"
-            )} />
+            <span
+              className={cn(
+                'mr-1.5 h-2 w-2 rounded-full inline-block',
+                online ? 'bg-green-500 animate-pulse' : 'bg-zinc-400'
+              )}
+            />
             {online ? 'Online' : 'Offline'}
           </Badge>
         </div>
@@ -85,10 +92,6 @@ export const AgentStatusCard: React.FC<AgentStatusCardProps> = ({ agent }) => {
               ? `Last seen ${timeAgo(agent.last_seen_at)}`
               : 'Never connected'}
           </span>
-        </div>
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Clock className="h-3.5 w-3.5" />
-          <span>Status: {agent.status}</span>
         </div>
       </CardContent>
     </Card>

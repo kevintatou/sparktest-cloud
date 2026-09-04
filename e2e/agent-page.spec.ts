@@ -52,11 +52,8 @@ test('manages agent tokens, connected agents, and install guidance', async ({
   await expect(page.getByText('Connected Agents')).toBeVisible();
   await expect(page.getByText(agentName)).toBeVisible();
   await expect(page.getByText('Online', { exact: true })).toBeVisible();
+  await expect(page.getByText(/^Status:/)).toHaveCount(0);
   await expect(page.getByText(tokenName, { exact: true })).toBeVisible();
-  await expect(
-    page.getByText(
-      /git clone https:\/\/github\.com\/kevintatou\/sparktest-cloud\.git/
-    )
-  ).toBeVisible();
+  await expect(page.getByText(/scripts\/install-agent\.sh/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible();
 });

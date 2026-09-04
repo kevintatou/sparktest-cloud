@@ -5,7 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Radio } from 'lucide-react';
 import { NavigationKey } from './navigation';
-import { AgentStatusCard } from '@/components/agent/agent-status-card';
+import {
+  AgentStatusCard,
+  isAgentOnline,
+} from '@/components/agent/agent-status-card';
 import { TokenManager } from '@/components/agent/token-manager';
 import { InstallInstructions } from '@/components/agent/install-instructions';
 import { API_BASE_URL } from '@/lib/api-config';
@@ -70,7 +73,7 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab }) => {
           setAgents(agentList);
           setAgentsLoaded(true);
           agentList
-            .filter((agent) => agent.status === 'online')
+            .filter((agent) => isAgentOnline(agent.last_seen_at))
             .forEach((agent) => {
               if (!trackedOnlineAgents.has(agent.id)) {
                 trackedOnlineAgents.add(agent.id);
