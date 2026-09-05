@@ -110,34 +110,64 @@ async fn run_agent(once: bool) -> Result<()> {
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(5);
-    let client = Client::new();
+    let client = Client::builder().timeout(Duration::from_secs(20)).build()?;
 
+    let mut failures = 0u32;
     loop {
-        check_in(&client, &api_url, &token, &name).await?;
-        let queue = next_run(&client, &api_url, &token, &name).await?;
-        if let Some(run) = queue.run {
-            execute_run(
-                &client,
-                &api_url,
-                &token,
-                run,
-                queue.definition,
-                queue.executor,
-            )
-            .await?;
+        let attempt = async {
+            check_in(&client, &api_url, &token, &name).await?;
+            let queue = next_run(&client, &api_url, &token, &name).await?;
+            if let Some(run) = queue.run {
+                let execution = execute_run(
+                    &client,
+                    &api_url,
+                    &token,
+                    run,
+                    queue.definition,
+                    queue.executor,
+                );
+                tokio::pin!(execution);
+                let mut heartbeat = tokio::time::interval(Duration::from_secs(15));
+                loop {
+                    tokio::select! {
+                        result = &mut execution => { result?; break; }
+                        _ = heartbeat.tick() => {
+                            if let Err(error) = check_in(&client, &api_url, &token, &name).await {
+                                eprintln!("Heartbeat failed: {error}");
+                            }
+                        }
+                    }
+                }
+            }
+            Ok::<(), anyhow::Error>(())
         }
-
+        .await;
+        match attempt {
+            Ok(()) => failures = 0,
+            Err(error) => {
+                if once || !retryable(&error) {
+                    return Err(error);
+                }
+                failures = failures.saturating_add(1);
+                eprintln!("Connection failed; retrying: {error}");
+            }
+        }
         if once {
             break;
         }
-        sleep(Duration::from_secs(interval)).await;
+        let delay = if failures == 0 {
+            interval.max(1)
+        } else {
+            (1u64 << failures.min(5)).min(30)
+        };
+        sleep(Duration::from_secs(delay)).await;
     }
 
     Ok(())
 }
 
 async fn connect(cloud_url: &str, token: &str, name: Option<String>) -> Result<()> {
-    let client = Client::new();
+    let client = Client::builder().timeout(Duration::from_secs(20)).build()?;
     let agent_name = name.unwrap_or_else(hostname);
     check_in(&client, cloud_url, token, &agent_name)
         .await
@@ -157,7 +187,7 @@ async fn connect(cloud_url: &str, token: &str, name: Option<String>) -> Result<(
 
 async fn status() -> Result<()> {
     let config = load_config()?.context("No agent is connected")?;
-    let client = Client::new();
+    let client = Client::builder().timeout(Duration::from_secs(20)).build()?;
     let name = config.name.clone().unwrap_or_else(hostname);
     check_in(&client, &config.cloud_url, &config.token, &name).await?;
     println!("Agent {name} is online at {}", config.cloud_url);
@@ -327,13 +357,9 @@ async fn execute_run(
     } else if executor_type == "docker" {
         execute_docker(&definition, executor.as_ref(), &command).await
     } else {
-        Command::new("sh")
-            .arg("-lc")
-            .arg(command)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
+        let mut process = Command::new("sh");
+        process.arg("-lc").arg(command);
+        bounded_output(&mut process, Duration::from_secs(600)).await
     };
 
     let (status, result, error) = match output {
@@ -343,6 +369,7 @@ async fn execute_run(
                 "definition_id": run.definition_id,
                 "previous_status": run.status,
                 "stdout": String::from_utf8_lossy(&output.stdout),
+                "stderr": String::from_utf8_lossy(&output.stderr),
             })),
             None,
         ),
@@ -358,17 +385,34 @@ async fn execute_run(
         Err(error) => ("error".to_string(), None, Some(error.to_string())),
     };
 
-    client
-        .post(format!("{api_url}/api/agent/runs/{}/status", run.id))
-        .bearer_auth(token)
-        .json(&RunStatusRequest {
-            status,
-            result,
-            error,
-        })
-        .send()
-        .await?
-        .error_for_status()?;
+    let report = RunStatusRequest {
+        status,
+        result,
+        error,
+    };
+    let mut failures = 0u32;
+    loop {
+        let response = client
+            .post(format!("{api_url}/api/agent/runs/{}/status", run.id))
+            .bearer_auth(token)
+            .json(&report)
+            .send()
+            .await
+            .and_then(|response| response.error_for_status());
+        match response {
+            Ok(_) => break,
+            Err(error) => {
+                let error = anyhow::Error::from(error);
+                if !retryable(&error) {
+                    return Err(error);
+                }
+                failures = failures.saturating_add(1);
+                eprintln!("Result upload failed; retaining result and retrying: {error}");
+                sleep(Duration::from_secs((1u64 << failures.min(5)).min(30))).await;
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -381,12 +425,32 @@ async fn execute_docker(
         .and_then(|item| item.image.as_deref())
         .or_else(|| definition.as_ref().map(|item| item.image.as_str()))
         .unwrap_or("alpine:3.20");
-    Command::new("docker")
-        .args(["run", "--rm", image, "sh", "-lc", command])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await
+    let container_name = format!(
+        "sparktest-agent-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let mut process = Command::new("docker");
+    process.args([
+        "run",
+        "--rm",
+        "--name",
+        &container_name,
+        image,
+        "sh",
+        "-lc",
+        command,
+    ]);
+    let result = bounded_output(&mut process, Duration::from_secs(600)).await;
+    if result.is_err() {
+        let mut cleanup = Command::new("docker");
+        cleanup.args(["rm", "-f", &container_name]);
+        let _ = bounded_output(&mut cleanup, Duration::from_secs(15)).await;
+    }
+    result
 }
 
 async fn execute_kubernetes_job(
@@ -404,49 +468,46 @@ async fn execute_kubernetes_job(
     let namespace =
         std::env::var("SPARKTEST_KUBE_NAMESPACE").unwrap_or_else(|_| "default".to_string());
 
-    let create = Command::new("kubectl")
-        .args([
-            "-n", &namespace, "create", "job", &job_name, "--image", image, "--", "sh", "-lc",
-            command,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await?;
-    if !create.status.success() {
-        return Ok(create);
+    let mut create_command = Command::new("kubectl");
+    create_command.args([
+        "-n", &namespace, "create", "job", &job_name, "--image", image, "--", "sh", "-lc", command,
+    ]);
+    let create = bounded_output(&mut create_command, Duration::from_secs(20)).await;
+    if let Ok(ref output) = create {
+        if !output.status.success() {
+            return create;
+        }
     }
-
-    let wait = Command::new("kubectl")
-        .args([
+    let execution = async {
+        create?;
+        let mut wait_command = Command::new("kubectl");
+        wait_command.args([
             "-n",
             &namespace,
             "wait",
             "--for=condition=complete",
             "--timeout=600s",
             &format!("job/{job_name}"),
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await?;
-    let logs = Command::new("kubectl")
-        .args(["-n", &namespace, "logs", &format!("job/{job_name}")])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await?;
-    let _ = Command::new("kubectl")
-        .args([
-            "-n",
-            &namespace,
-            "delete",
-            "job",
-            &job_name,
-            "--ignore-not-found=true",
-        ])
-        .output()
-        .await;
+        ]);
+        let wait = bounded_output(&mut wait_command, Duration::from_secs(610)).await?;
+        let mut logs_command = Command::new("kubectl");
+        logs_command.args(["-n", &namespace, "logs", &format!("job/{job_name}")]);
+        let logs = bounded_output(&mut logs_command, Duration::from_secs(20)).await?;
+        Ok::<_, std::io::Error>((wait, logs))
+    }
+    .await;
+    let mut cleanup = Command::new("kubectl");
+    cleanup.args([
+        "-n",
+        &namespace,
+        "delete",
+        "job",
+        &job_name,
+        "--ignore-not-found=true",
+        "--wait=false",
+    ]);
+    let _ = bounded_output(&mut cleanup, Duration::from_secs(20)).await;
+    let (wait, logs) = execution?;
 
     if wait.status.success() {
         Ok(logs)
@@ -473,4 +534,151 @@ fn default_command(executor: &Executor) -> Option<String> {
 
 fn hostname() -> String {
     std::env::var("HOSTNAME").unwrap_or_else(|_| "sparktest-agent".to_string())
+}
+
+fn retryable(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<reqwest::Error>()
+        .map(|error| {
+            error
+                .status()
+                .map(|status| {
+                    status.is_server_error() || status.as_u16() == 429 || status.as_u16() == 408
+                })
+                .unwrap_or(true)
+        })
+        .unwrap_or(false)
+}
+
+async fn bounded_output(
+    command: &mut Command,
+    limit: Duration,
+) -> std::io::Result<std::process::Output> {
+    command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.as_std_mut().process_group(0);
+    }
+    let child = command.spawn()?;
+    let pid = child.id();
+    match tokio::time::timeout(limit, child.wait_with_output()).await {
+        Ok(result) => result,
+        Err(_) => {
+            #[cfg(unix)]
+            if let Some(pid) = pid {
+                // Kill descendants too: dropping the child only kills the shell.
+                let _ = Command::new("kill")
+                    .args(["-KILL", "--", &format!("-{pid}")])
+                    .status()
+                    .await;
+            }
+            Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "Execution exceeded its time limit",
+            ))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn result_delivery_retries_a_server_failure_with_the_same_result() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let mut bodies = Vec::new();
+            for status in ["503 Service Unavailable", "200 OK"] {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = Vec::new();
+                let body = loop {
+                    let mut buffer = [0; 4096];
+                    let count = socket.read(&mut buffer).await.unwrap();
+                    assert!(count > 0);
+                    request.extend_from_slice(&buffer[..count]);
+                    if let Some(end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&request[..end]).to_lowercase();
+                        let length: usize = headers
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .unwrap()
+                            .parse()
+                            .unwrap();
+                        if request.len() >= end + 4 + length {
+                            break request[end + 4..end + 4 + length].to_vec();
+                        }
+                    }
+                };
+                bodies.push(body);
+                socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        )
+                        .as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+            }
+            assert_eq!(bodies[0], bodies[1]);
+            let result: Value = serde_json::from_slice(&bodies[1]).unwrap();
+            assert_eq!(result["status"], "passed");
+            assert!(result["result"]["stdout"]
+                .as_str()
+                .unwrap()
+                .contains("connected"));
+        });
+        let run = TestRun {
+            id: "test".into(),
+            definition_id: None,
+            status: "running".into(),
+        };
+        let definition = TestDefinition {
+            image: "alpine:3.20".into(),
+            commands: vec!["echo connected".into()],
+        };
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            execute_run(
+                &Client::new(),
+                &url,
+                "test-token",
+                run,
+                Some(definition),
+                None,
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn shell_example_succeeds_and_preserves_output() {
+        let mut command = Command::new("sh");
+        command.args(["-lc", "echo 'SparkTest connected'"]);
+        let result = bounded_output(&mut command, Duration::from_secs(2))
+            .await
+            .unwrap();
+        assert!(result.status.success());
+        assert!(String::from_utf8_lossy(&result.stdout).contains("SparkTest connected"));
+    }
+
+    #[tokio::test]
+    async fn hung_command_times_out() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 30"]);
+        let result = bounded_output(&mut command, Duration::from_millis(50))
+            .await
+            .unwrap_err();
+        assert_eq!(result.kind(), std::io::ErrorKind::TimedOut);
+    }
 }

@@ -20,7 +20,8 @@ export const InstallInstructions: React.FC<InstallInstructionsProps> = ({
   const displayToken = token || 'YOUR_TOKEN';
 
   const command = `export SPARKTEST_AGENT_TOKEN=${displayToken}
-curl -fsSL https://raw.githubusercontent.com/kevintatou/sparktest-cloud/main/scripts/install-agent.sh | bash`;
+curl -fsSL https://raw.githubusercontent.com/kevintatou/sparktest-cloud/main/scripts/install-agent.sh | bash
+"$HOME/.local/bin/sparktest-agent" run`;
 
   const copyCommand = async () => {
     await navigator.clipboard.writeText(command);
@@ -32,7 +33,9 @@ curl -fsSL https://raw.githubusercontent.com/kevintatou/sparktest-cloud/main/scr
     <div className={cn('space-y-4', compact && 'space-y-3')}>
       {!compact && (
         <p className="text-sm text-muted-foreground">
-          Works on any machine with Git, Rust, and Cargo installed.
+          Supports Linux x86_64 and Apple Silicon macOS with curl and tar. No
+          Rust or Git required. Keep the terminal running, then verify the agent
+          appears Online below.
         </p>
       )}
 

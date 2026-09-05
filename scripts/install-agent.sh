@@ -12,10 +12,8 @@ os="$(uname -s)"
 arch="$(uname -m)"
 case "$os:$arch" in
   Linux:x86_64) target="x86_64-unknown-linux-gnu" ;;
-  Linux:aarch64|Linux:arm64) target="aarch64-unknown-linux-gnu" ;;
   Darwin:arm64) target="aarch64-apple-darwin" ;;
-  Darwin:x86_64) target="x86_64-apple-darwin" ;;
-  *) printf 'Unsupported platform: %s %s. Download a release manually for Windows.\n' "$os" "$arch" >&2; exit 1 ;;
+  *) printf 'No installer binary is published for %s %s. This installer supports Linux x86_64 and Apple Silicon macOS.\n' "$os" "$arch" >&2; exit 1 ;;
 esac
 
 if [[ "$VERSION" == "latest" ]]; then
@@ -42,3 +40,9 @@ if [[ -n "${SPARKTEST_AGENT_TOKEN:-}" ]]; then
 else
   printf 'Connect it with: sparktest-agent connect <token>\n'
 fi
+
+case ":$PATH:" in
+  *":$INSTALL_DIR:"*) ;;
+  *) printf 'For future terminals, add this directory to your PATH: %s\n' "$INSTALL_DIR" ;;
+esac
+printf 'Start the agent now: %q run\n' "$INSTALL_DIR/sparktest-agent"

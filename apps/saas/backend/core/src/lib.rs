@@ -2169,6 +2169,36 @@ impl Database {
         Ok(())
     }
 
+    /// Beta executions are capped at ten minutes by the agent. Allow five
+    /// additional minutes for result delivery, then surface lost runs as errors.
+    /// Never requeue automatically: test commands can have side effects.
+    pub async fn expire_abandoned_runs(&self) -> Result<u64, anyhow::Error> {
+        let now = Utc::now();
+        let cutoff = now - chrono::Duration::minutes(15);
+        let message = "Agent did not report a result within 15 minutes. Execution may have been interrupted; inspect the agent before retrying.";
+        if let Some(pool) = &self.pool {
+            return Ok(sqlx::query("update test_runs set status = 'error', error = $1, finished_at = $2, updated_at = $2 where status = 'running' and started_at < $3")
+                .bind(message).bind(now).bind(cutoff).execute(pool).await?.rows_affected());
+        }
+        let mut store = self.store.lock().unwrap();
+        let mut count = 0;
+        for run in &mut store.runs {
+            if run.status == "running"
+                && run
+                    .started_at
+                    .map(|started| started < cutoff)
+                    .unwrap_or(false)
+            {
+                run.status = "error".to_string();
+                run.error = Some(message.to_string());
+                run.finished_at = Some(now);
+                run.updated_at = now;
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
     pub async fn list_test_runs(
         &self,
         project_id: Option<Uuid>,
@@ -3450,6 +3480,43 @@ mod tests {
             .await
             .unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn abandoned_runs_expire_without_requeuing_or_changing_finished_runs() {
+        let db = Database::new("test://").await.unwrap();
+        let now = Utc::now();
+        for (status, age) in [
+            ("running", 16),
+            ("running", 1),
+            ("passed", 16),
+            ("queued", 16),
+        ] {
+            let run = TestRun {
+                id: Uuid::new_v4(),
+                project_id: db.default_project_id(),
+                definition_id: None,
+                suite_id: None,
+                executor_id: None,
+                agent_id: None,
+                status: status.to_string(),
+                result: None,
+                error: None,
+                queued_at: now,
+                started_at: Some(now - chrono::Duration::minutes(age)),
+                finished_at: None,
+                created_at: now,
+                updated_at: now,
+                target_environment_id: None,
+            };
+            db.create_test_run(&run).await.unwrap();
+        }
+        assert_eq!(db.expire_abandoned_runs().await.unwrap(), 1);
+        assert_eq!(db.expire_abandoned_runs().await.unwrap(), 0);
+        let runs = db.list_test_runs(None, None).await.unwrap();
+        for status in ["error", "running", "passed", "queued"] {
+            assert_eq!(runs.iter().filter(|run| run.status == status).count(), 1);
+        }
     }
 
     #[test]

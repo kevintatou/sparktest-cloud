@@ -96,7 +96,21 @@ test('executes a definition through an agent and shows the result', async ({
   expect(agentTokenResponse.ok()).toBeTruthy();
   const agentToken = await agentTokenResponse.json();
 
-  const definition = await createDefinition(page, token, definitionName);
+  await navigateTo(page, 'Definitions');
+  await page
+    .getByRole('button', { name: 'Create Definition', exact: true })
+    .click();
+  await page.getByLabel('Definition Name *').fill(definitionName);
+  await expect(page.getByLabel('Shell command *')).toHaveValue(
+    'echo "SparkTest connected"'
+  );
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url() === `${apiUrl}/api/test-definitions` &&
+      response.request().method() === 'POST'
+  );
+  await page.getByRole('button', { name: 'Create Test', exact: true }).click();
+  expect((await saved).ok()).toBeTruthy();
   await api(page, agentToken.token, '/api/agent/check-in', {
     method: 'POST',
     data: {

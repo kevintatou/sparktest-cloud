@@ -8,7 +8,6 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Clock,
-  Filter,
   Plus,
   XCircle,
 } from 'lucide-react';
@@ -104,10 +103,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Recent Activity
             </h2>
           </div>
-          <Button variant="outline" className="gap-2 rounded-xl">
-            <Filter className="h-4 w-4" />
-            Filter
-          </Button>
         </div>
 
         <Card className="overflow-hidden rounded-xl shadow-sm">

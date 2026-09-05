@@ -33,9 +33,8 @@ export default function Home() {
 function HomeContent() {
   const { user } = useAuth();
   const authParam = useSearchParams().get('auth');
-  const publicAuthView = authParam === 'login' || authParam === 'signup'
-    ? authParam
-    : null;
+  const publicAuthView =
+    authParam === 'login' || authParam === 'signup' ? authParam : null;
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
     if (typeof window === 'undefined') {
       return false;
@@ -50,6 +49,7 @@ function HomeContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Start closed on initial load
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Use storage service instead of local state
@@ -119,6 +119,7 @@ function HomeContent() {
         description: 'Failed to create definition.',
         variant: 'destructive',
       });
+      throw error;
     }
   };
 
@@ -149,10 +150,8 @@ function HomeContent() {
   const handleRunClick = (runId: string) => {
     const run = testRuns.find((r) => r.id === runId);
     if (run) {
-      toast({
-        title: 'Run Details',
-        description: `Viewing details for Run ${run.id.slice(-8)} (${run.status})`,
-      });
+      setSelectedRunId(runId);
+      setActiveTab('runs');
     }
   };
 
@@ -191,6 +190,8 @@ function HomeContent() {
     if (['definitions', 'runs'].includes(activeTab)) {
       return (
         <TestSections
+          selectedRunId={selectedRunId}
+          setSelectedRunId={setSelectedRunId}
           activeTab={activeTab}
           testDefinitions={testDefinitions}
           testRuns={testRuns}

@@ -1,35 +1,39 @@
-"use client"
+'use client';
 
 import React, { useState } from 'react';
 import { Definition, Executor } from '@tatou/core';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DialogDescription,
-  DialogFooter 
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight, Settings } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 interface CreateTestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreateTest: (test: Omit<Definition, 'id' | 'createdAt'>) => void;
+  onCreateTest: (test: Omit<Definition, 'id' | 'createdAt'>) => Promise<void>;
   executors?: Executor[];
   initialValues?: Partial<Definition>;
 }
 
-export function CreateTestDialog({ 
-  open, 
-  onOpenChange, 
+export function CreateTestDialog({
+  open,
+  onOpenChange,
   onCreateTest,
   initialValues,
   executors = [],
@@ -37,93 +41,97 @@ export function CreateTestDialog({
   const [formData, setFormData] = useState({
     name: initialValues?.name || '',
     description: initialValues?.description || '',
-    commands: initialValues?.commands?.[0] || '// Write your code here\nconsole.log("Hello, World!");',
-    image: initialValues?.image || 'javascript',
+    commands: initialValues?.commands?.[0] || 'echo "SparkTest connected"',
+    image: initialValues?.image || 'alpine:3.20',
     executorId: initialValues?.executorId || '',
-    // Advanced settings
-    timeout: '30',
-    maxRetries: '3',
-    environment: 'development',
-    tags: '',
   });
 
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!formData.name.trim()) {
       newErrors.name = 'Definition name is required';
     }
-    
+
     if (!formData.commands.trim()) {
       newErrors.commands = 'Commands are required';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validateForm()) {
+
+    if (saving || !validateForm()) {
       return;
     }
 
-    onCreateTest({
-      name: formData.name,
-      description: formData.description,
-      commands: [formData.commands],
-      image: formData.image,
-      executorId: formData.executorId || undefined,
-    });
+    setSaving(true);
+    try {
+      await onCreateTest({
+        name: formData.name,
+        description: formData.description,
+        commands: [formData.commands],
+        image: formData.image,
+        executorId: formData.executorId || undefined,
+      });
 
-    // Reset form
-    setFormData({
-      name: '',
-      description: '',
-      commands: '// Write your test code here\nconsole.log("Hello, World!");',
-      image: 'javascript',
-      executorId: '',
-      timeout: '30',
-      maxRetries: '3',
-      environment: 'development',
-      tags: '',
-    });
-    setShowAdvanced(false);
-    setErrors({});
-    onOpenChange(false);
+      // Reset form
+      setFormData({
+        name: '',
+        description: '',
+        commands: 'echo "SparkTest connected"',
+        image: 'alpine:3.20',
+        executorId: '',
+      });
+
+      setErrors({});
+      onOpenChange(false);
+    } catch {
+      setErrors({
+        submit:
+          'Could not save the definition. Your input is preserved; please retry.',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
     setFormData({
       name: '',
       description: '',
-      commands: '// Write your code here\nconsole.log("Hello, World!");',
-      image: 'javascript',
+      commands: 'echo "SparkTest connected"',
+      image: 'alpine:3.20',
       executorId: '',
-      timeout: '30',
-      maxRetries: '3',
-      environment: 'development',
-      tags: '',
     });
-    setShowAdvanced(false);
+
     setErrors({});
     onOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!saving) onOpenChange(next);
+      }}
+    >
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Definition</DialogTitle>
           <DialogDescription>
-            Create a new definition. Fill in the basic information and optionally configure advanced settings.
+            Commands run on your agent machine in its working directory using
+            the tools installed there. Beta runs have a 10-minute execution
+            limit.
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Information */}
           <div className="space-y-4">
@@ -132,7 +140,9 @@ export function CreateTestDialog({
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
                 placeholder="Enter definition name..."
                 className={errors.name ? 'border-destructive' : ''}
               />
@@ -146,36 +156,39 @@ export function CreateTestDialog({
               <Input
                 id="description"
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
                 placeholder="Brief description of what this test does..."
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="image">Language *</Label>
-              <Select 
-                value={formData.image} 
-                onValueChange={(value) => setFormData({ ...formData, image: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select language" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="javascript">JavaScript</SelectItem>
-                  <SelectItem value="python">Python</SelectItem>
-                  <SelectItem value="rust">Rust</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="image">
+                Container image (Docker / Kubernetes only)
+              </Label>
+              <Input
+                id="image"
+                value={formData.image}
+                onChange={(e) =>
+                  setFormData({ ...formData, image: e.target.value })
+                }
+              />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="commands">Test Code *</Label>
+              <Label htmlFor="commands">Shell command *</Label>
               <Textarea
                 id="commands"
                 value={formData.commands}
-                onChange={(e) => setFormData({ ...formData, commands: e.target.value })}
-                placeholder="Write your test code here..."
-                className={cn("min-h-[200px] font-mono text-sm", errors.commands ? 'border-destructive' : '')}
+                onChange={(e) =>
+                  setFormData({ ...formData, commands: e.target.value })
+                }
+                placeholder={'echo "SparkTest connected"'}
+                className={cn(
+                  'min-h-[200px] font-mono text-sm',
+                  errors.commands ? 'border-destructive' : ''
+                )}
               />
               {errors.commands && (
                 <p className="text-sm text-destructive">{errors.commands}</p>
@@ -186,99 +199,49 @@ export function CreateTestDialog({
               <Label htmlFor="executor">Executor</Label>
               <Select
                 value={formData.executorId || 'none'}
-                onValueChange={(value) => setFormData({ ...formData, executorId: value === 'none' ? '' : value })}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    executorId: value === 'none' ? '' : value,
+                  })
+                }
               >
-                <SelectTrigger id="executor"><SelectValue placeholder="Use definition defaults" /></SelectTrigger>
+                <SelectTrigger id="executor">
+                  <SelectValue placeholder="Use definition defaults" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Use definition defaults</SelectItem>
-                  {executors.map((executor) => <SelectItem key={executor.id} value={executor.id}>{executor.name}</SelectItem>)}
+                  {executors.map((executor) => (
+                    <SelectItem key={executor.id} value={executor.id}>
+                      {executor.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-              {executors.length === 0 && <p className="text-xs text-muted-foreground">Create an executor first to select one here.</p>}
+              {executors.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Create an executor first to select one here.
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Advanced Settings - Collapsible */}
-          <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
-            <CollapsibleTrigger asChild>
-              <Button 
-                type="button" 
-                variant="ghost" 
-                className="flex items-center gap-2 p-0 h-auto font-medium hover:bg-transparent"
-              >
-                {showAdvanced ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-                <Settings className="h-4 w-4" />
-                Advanced Settings
-              </Button>
-            </CollapsibleTrigger>
-            
-            <CollapsibleContent className="space-y-4 pt-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="timeout">Timeout (seconds)</Label>
-                  <Input
-                    id="timeout"
-                    type="number"
-                    value={formData.timeout}
-                    onChange={(e) => setFormData({ ...formData, timeout: e.target.value })}
-                    placeholder="30"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="maxRetries">Max Retries</Label>
-                  <Input
-                    id="maxRetries"
-                    type="number"
-                    value={formData.maxRetries}
-                    onChange={(e) => setFormData({ ...formData, maxRetries: e.target.value })}
-                    placeholder="3"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="environment">Environment</Label>
-                <Select 
-                  value={formData.environment} 
-                  onValueChange={(value) => setFormData({ ...formData, environment: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select environment" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="development">Development</SelectItem>
-                    <SelectItem value="staging">Staging</SelectItem>
-                    <SelectItem value="production">Production</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="tags">Tags</Label>
-                <Input
-                  id="tags"
-                  value={formData.tags}
-                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                  placeholder="api, smoke, regression (comma-separated)"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Add tags to organize and filter your tests
-                </p>
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-
+          {errors.submit && (
+            <p role="alert" className="text-destructive">
+              {errors.submit}
+            </p>
+          )}
           <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={handleCancel}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              disabled={saving}
+            >
               Cancel
             </Button>
-            <Button type="submit">
-              Create Test
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : 'Create Test'}
             </Button>
           </DialogFooter>
         </form>

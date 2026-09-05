@@ -30,7 +30,7 @@ packages/
 - **Storage Service**: Supports both local storage and API modes
 - **Modern Stack**: 
   - Frontend: Next.js 14, TypeScript, Tailwind CSS, Radix UI
-  - Backend: Rust, Axum, PostgreSQL (ready), In-memory storage (current)
+  - Backend: Rust, Axum, PostgreSQL persistence (in-memory mode for local development)
 - **Monorepo**: pnpm workspaces with shared packages
 - **Type Safety**: End-to-end TypeScript/Rust type safety
 
@@ -66,7 +66,7 @@ The frontend runs at `http://localhost:3000` and the API at `http://localhost:30
 export SPARKTEST_AGENT_TOKEN=stc_your_token
 curl -fsSL https://raw.githubusercontent.com/kevintatou/sparktest-cloud/main/scripts/install-agent.sh | bash
 
-sparktest-agent run
+"$HOME/.local/bin/sparktest-agent" run
 ```
 
 The installer downloads a released native binary. It does not clone the
@@ -309,3 +309,17 @@ MIT License - see LICENSE file for details.
 Based on the design principles and architecture of the open-source [SparkTest](https://github.com/kevintatou/sparktest) project.
 
 MVP inspiration: http://209.38.43.8/
+
+### Beta execution limits
+
+Definitions contain shell commands, not raw JavaScript/Python/Rust source.
+For example, use `echo "SparkTest connected"` for a first run, or
+`cd /absolute/path/to/project && npm test` for an existing local project.
+The local agent uses the tools, working directory, and permissions of the user
+running it. Docker and Kubernetes executors use the configured container image.
+
+Local and Docker executions have a ten-minute limit. Agent heartbeats continue
+while tests run, and transient API failures are retried. Results are retained in
+memory while delivery is retried; keep the agent process running until delivery
+succeeds. The server marks runs without a result after fifteen minutes as errors;
+it does not automatically rerun commands. A late result can resolve that error.

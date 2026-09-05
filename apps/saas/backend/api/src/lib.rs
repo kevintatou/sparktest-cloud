@@ -1152,6 +1152,11 @@ async fn agent_update_run_status(
     if run.project_id != token.project_id {
         return Err(StatusCode::FORBIDDEN);
     }
+    // A response can be lost after persistence. Replayed result uploads should
+    // not change completion timestamps or redeliver the same webhook.
+    if run.status == request.status && run.result == request.result && run.error == request.error {
+        return Ok(Json(run));
+    }
     run.status = request.status;
     run.result = request.result;
     run.error = request.error;
@@ -1936,6 +1941,7 @@ mod tests {
         assert!(claimed.started_at.is_some());
 
         let completed = app
+            .clone()
             .oneshot(json_request(
                 "POST",
                 &format!("/api/agent/runs/{}/status", run.id),
@@ -1954,6 +1960,19 @@ mod tests {
         assert_eq!(finished.status, "passed");
         assert_eq!(finished.result, Some(json!({ "exit_code": 0 })));
         assert!(finished.finished_at.is_some());
+        let replay = app
+            .oneshot(json_request(
+                "POST",
+                &format!("/api/agent/runs/{}/status", run.id),
+                Some(&token.token),
+                json!({ "status": "passed", "result": { "exit_code": 0 }, "error": null }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(replay.status(), StatusCode::OK);
+        let replayed = db.get_test_run(run.id).await.unwrap().unwrap();
+        assert_eq!(finished.finished_at, replayed.finished_at);
+        assert_eq!(finished.updated_at, replayed.updated_at);
     }
 
     #[tokio::test]

@@ -23,6 +23,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting retention pruner");
     spawn_retention_pruner(database.clone(), Duration::from_secs(3600));
 
+    let recovery_db = database.clone();
+    tokio::spawn(async move {
+        let mut timer = tokio::time::interval(Duration::from_secs(30));
+        loop {
+            timer.tick().await;
+            if let Err(error) = recovery_db.expire_abandoned_runs().await {
+                tracing::error!(%error, "Could not expire abandoned runs");
+            }
+        }
+    });
+
     let app = create_app(database);
     let listener = TcpListener::bind(&addr).await?;
 

@@ -58,6 +58,7 @@ async function fetchApi<T>(
 }
 
 export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab }) => {
+  const [installToken, setInstallToken] = useState('');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
   const [trackedOnlineAgents] = useState(() => new Set<string>());
@@ -115,7 +116,7 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab }) => {
                 should execute your tests.
               </p>
             </div>
-            <InstallInstructions token="" />
+            <InstallInstructions token={installToken} />
           </div>
 
           {/* Connected agents */}
@@ -149,7 +150,9 @@ export const SaasSections: React.FC<SaasSectionsProps> = ({ activeTab }) => {
           {/* Token management */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Agent Tokens</h3>
-            <TokenManager />
+            <TokenManager
+              onTokenCreated={(token) => setInstallToken(token.token)}
+            />
           </div>
         </div>
       );

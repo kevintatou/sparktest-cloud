@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { TestDefinitionCard, TestRunCard } from '@tatou/ui';
@@ -10,6 +9,8 @@ import { NavigationKey } from './navigation';
 import { RunDetail } from './run-detail';
 
 export interface TestSectionsProps {
+  selectedRunId: string | null;
+  setSelectedRunId: (id: string | null) => void;
   activeTab: NavigationKey;
   testDefinitions: Definition[];
   testRuns: Run[];
@@ -22,6 +23,8 @@ export interface TestSectionsProps {
 }
 
 export const TestSections: React.FC<TestSectionsProps> = ({
+  selectedRunId,
+  setSelectedRunId,
   activeTab,
   testDefinitions,
   testRuns,
@@ -32,8 +35,6 @@ export const TestSections: React.FC<TestSectionsProps> = ({
   deleteRun,
   executors,
 }) => {
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-
   // If a run is selected, show the detail view
   if (activeTab === 'runs' && selectedRunId) {
     const run = testRuns.find((r) => r.id === selectedRunId);
